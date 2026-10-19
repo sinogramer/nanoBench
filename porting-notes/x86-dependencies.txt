@@ -1,0 +1,148 @@
+common/nanoBench.h:29:#include <cpuid.h>
+common/nanoBench.h:45:#undef  MSR_IA32_PMC0
+common/nanoBench.h:46:#define MSR_IA32_PMC0                 0x0C1
+common/nanoBench.h:47:#ifndef MSR_IA32_PERFEVTSEL0
+common/nanoBench.h:48:#define MSR_IA32_PERFEVTSEL0          0x186
+common/nanoBench.h:185:    unsigned long rdmsr;
+common/nanoBench.h:186:    unsigned long wrmsr[10];
+common/nanoBench.h:187:    unsigned long wrmsr_val[10];
+common/nanoBench.h:188:    size_t n_wrmsr;
+common/nanoBench.h:213:// During measurements, R14, RBP, RDI, RSI, and RSP will contain these addresses plus RUNTIME_R_SIZE/2.
+common/nanoBench.h:214:// If r14_size is set in the kernel module, R14 will not have this offset.
+common/nanoBench.h:235:bool check_cpuid(void);
+common/nanoBench.h:290:#define MAGIC_BYTES_RUNTIME_R14 0x40B513B1C2813F04
+common/nanoBench.h:329:// RBX, RBP, and R12–R15 are callee saved registers according to the "System V AMD64 ABI" (https://en.wikipedia.org/wiki/X86_calling_conventions)
+common/nanoBench.h:352:        "mov r14, "STRINGIFY(MAGIC_BYTES_RUNTIME_R14)"\n" \
+common/nanoBench.c:49:unsigned long cur_rdmsr = 0;
+common/nanoBench.c:96:void build_cpuid_string(char* buf, unsigned int r0, unsigned int r1, unsigned int r2, unsigned int r3) {
+common/nanoBench.c:103:bool check_cpuid() {
+common/nanoBench.c:105:    __cpuid(0, eax, ebx, ecx, edx);
+common/nanoBench.c:108:    build_cpuid_string(proc_vendor_string, ebx, edx, ecx, 0);
+common/nanoBench.c:112:    __cpuid(0x80000002, eax, ebx, ecx, edx);
+common/nanoBench.c:113:    build_cpuid_string(proc_brand_string, eax, ebx, ecx, edx);
+common/nanoBench.c:114:    __cpuid(0x80000003, eax, ebx, ecx, edx);
+common/nanoBench.c:115:    build_cpuid_string(proc_brand_string+16, eax, ebx, ecx, edx);
+common/nanoBench.c:116:    __cpuid(0x80000004, eax, ebx, ecx, edx);
+common/nanoBench.c:117:    build_cpuid_string(proc_brand_string+32, eax, ebx, ecx, edx);
+common/nanoBench.c:120:    __cpuid(0x01, eax, ebx, ecx, edx);
+common/nanoBench.c:135:        __cpuid(0x01, eax, ebx, ecx, edx);
+common/nanoBench.c:138:        __cpuid(0x0A, eax, ebx, ecx, edx);
+common/nanoBench.c:255:        char* wrmsr_str = strsep(&line, " \t");
+common/nanoBench.c:256:        char* rdmsr_str = strsep(&line, " \t");
+common/nanoBench.c:261:            msr_configs[n_msr_configs].description = rdmsr_str;
+common/nanoBench.c:262:            rdmsr_str = wrmsr_str;
+common/nanoBench.c:263:            wrmsr_str = line;
+common/nanoBench.c:266:        strreplace(rdmsr_str, 'h', '\0'); strreplace(rdmsr_str, 'H', '\0');
+common/nanoBench.c:267:        msr_configs[n_msr_configs].rdmsr = strtoul(rdmsr_str+4, NULL, 16);
+common/nanoBench.c:269:        size_t n_wrmsr = 0;
+common/nanoBench.c:270:        char* tok = wrmsr_str;
+common/nanoBench.c:273:            if (n_wrmsr >= 10) {
+common/nanoBench.c:274:                print_error("Error: n_wrmsr >= 10");
+common/nanoBench.c:281:            msr_configs[n_msr_configs].wrmsr[n_wrmsr] = strtoul(msr_str, NULL, 16);
+common/nanoBench.c:283:            msr_configs[n_msr_configs].wrmsr_val[n_wrmsr] = strtoul(ce, NULL, 0);
+common/nanoBench.c:284:            n_wrmsr++;
+common/nanoBench.c:286:        msr_configs[n_msr_configs].n_wrmsr = n_wrmsr;
+common/nanoBench.c:315:        snprintf(cmd, sizeof(cmd), "rdmsr -c -p%d %#x", cpu, msr);
+common/nanoBench.c:329:        snprintf(cmd, sizeof(cmd), "wrmsr -p%d %#x %#lx", cpu, msr, value);
+common/nanoBench.c:354:    asm volatile("rdpmc" : "=a"(lo), "=d"(hi) : "c"(counter));
+common/nanoBench.c:364:            write_msr(MSR_IA32_PMC0+i, 0);
+common/nanoBench.c:377:            write_msr(MSR_IA32_PERFEVTSEL0+i, 0);
+common/nanoBench.c:458:            write_msr(MSR_IA32_PERFEVTSEL0+i, perfevtselx);
+common/nanoBench.c:518:    for (size_t i=0; i<config.n_wrmsr; i++) {
+common/nanoBench.c:519:        write_msr(config.wrmsr[i], config.wrmsr_val[i]);
+common/nanoBench.c:521:    cur_rdmsr = config.rdmsr;
+common/nanoBench.c:576:                *(int32_t*)(&runtime_code[rcI]) = (int32_t)local_loop_count; rcI += 4; // mov R15, local_loop_count
+common/nanoBench.c:654:                    strcpy(&runtime_code[rcI], "\x49\xFF\xCF"); rcI += 3; // dec R15
+common/nanoBench.c:698:            *(void**)(&runtime_code[rcI]) = (void*)cur_rdmsr;
+common/nanoBench.c:703:        } else if (starts_with_magic_bytes(&measurement_template[templateI], MAGIC_BYTES_RUNTIME_R14)) {
+common/nanoBench.c:744:        } else if (starts_with_magic_bytes(&template[templateI], MAGIC_BYTES_RUNTIME_R14)) {
+common/nanoBench.c:917:        "lfence; rdpmc; lfence                   \n"
+common/nanoBench.c:921:        "lfence; rdpmc; lfence                   \n"
+common/nanoBench.c:937:        "lfence; rdpmc; lfence                   \n"
+common/nanoBench.c:941:        "lfence; rdpmc; lfence                   \n"
+common/nanoBench.c:967:        "lfence; rdpmc; lfence                   \n"
+common/nanoBench.c:971:        "lfence; rdpmc; lfence                   \n"
+common/nanoBench.c:975:        "lfence; rdpmc; lfence                   \n"
+common/nanoBench.c:979:        "lfence; rdpmc; lfence                   \n"
+common/nanoBench.c:995:        "lfence; rdpmc; lfence                   \n"
+common/nanoBench.c:999:        "lfence; rdpmc; lfence                   \n"
+common/nanoBench.c:1003:        "lfence; rdpmc; lfence                   \n"
+common/nanoBench.c:1007:        "lfence; rdpmc; lfence                   \n"
+common/nanoBench.c:1024:        "lfence; rdpmc; lfence                   \n"
+common/nanoBench.c:1028:        "lfence; rdpmc; lfence                   \n"
+common/nanoBench.c:1035:        "lfence; rdpmc; lfence                   \n"
+common/nanoBench.c:1039:        "lfence; rdpmc; lfence                   \n"
+common/nanoBench.c:1061:        "lfence; rdpmc; lfence                   \n"
+common/nanoBench.c:1065:        "lfence; rdpmc; lfence                   \n"
+common/nanoBench.c:1069:        "lfence; rdpmc; lfence                   \n"
+common/nanoBench.c:1073:        "lfence; rdpmc; lfence                   \n"
+common/nanoBench.c:1080:        "lfence; rdpmc; lfence                   \n"
+common/nanoBench.c:1084:        "lfence; rdpmc; lfence                   \n"
+common/nanoBench.c:1088:        "lfence; rdpmc; lfence                   \n"
+common/nanoBench.c:1092:        "lfence; rdpmc; lfence                   \n"
+common/nanoBench.c:1125:        "lfence; rdpmc; lfence                   \n"
+common/nanoBench.c:1129:        "lfence; rdpmc; lfence                   \n"
+common/nanoBench.c:1133:        "lfence; rdpmc; lfence                   \n"
+common/nanoBench.c:1137:        "lfence; rdpmc; lfence                   \n"
+common/nanoBench.c:1141:        "lfence; rdpmc; lfence                   \n"
+common/nanoBench.c:1145:        "lfence; rdpmc; lfence                   \n"
+common/nanoBench.c:1161:        "lfence; rdpmc; lfence                   \n"
+common/nanoBench.c:1165:        "lfence; rdpmc; lfence                   \n"
+common/nanoBench.c:1169:        "lfence; rdpmc; lfence                   \n"
+common/nanoBench.c:1173:        "lfence; rdpmc; lfence                   \n"
+common/nanoBench.c:1177:        "lfence; rdpmc; lfence                   \n"
+common/nanoBench.c:1181:        "lfence; rdpmc; lfence                   \n"
+common/nanoBench.c:1202:        "lfence; rdpmc; lfence                   \n"
+common/nanoBench.c:1206:        "lfence; rdpmc; lfence                   \n"
+common/nanoBench.c:1210:        "lfence; rdpmc; lfence                   \n"
+common/nanoBench.c:1214:        "lfence; rdpmc; lfence                   \n"
+common/nanoBench.c:1218:        "lfence; rdpmc; lfence                   \n"
+common/nanoBench.c:1222:        "lfence; rdpmc; lfence                   \n"
+common/nanoBench.c:1229:        "lfence; rdpmc; lfence                   \n"
+common/nanoBench.c:1233:        "lfence; rdpmc; lfence                   \n"
+common/nanoBench.c:1237:        "lfence; rdpmc; lfence                   \n"
+common/nanoBench.c:1241:        "lfence; rdpmc; lfence                   \n"
+common/nanoBench.c:1245:        "lfence; rdpmc; lfence                   \n"
+common/nanoBench.c:1249:        "lfence; rdpmc; lfence                   \n"
+common/nanoBench.c:1285:        "lfence; rdpmc; lfence                   \n"
+common/nanoBench.c:1289:        "lfence; rdpmc; lfence                   \n"
+common/nanoBench.c:1293:        "lfence; rdpmc; lfence                   \n"
+common/nanoBench.c:1308:        "lfence; rdpmc; lfence                   \n"
+common/nanoBench.c:1313:        "lfence; rdpmc; lfence                   \n"
+common/nanoBench.c:1317:        "lfence; rdpmc; lfence                   \n"
+common/nanoBench.c:1341:        "lfence; rdpmc; lfence                   \n"
+common/nanoBench.c:1345:        "lfence; rdpmc; lfence                   \n"
+common/nanoBench.c:1349:        "lfence; rdpmc; lfence                   \n"
+common/nanoBench.c:1356:        "lfence; rdpmc; lfence                   \n"
+common/nanoBench.c:1360:        "lfence; rdpmc; lfence                   \n"
+common/nanoBench.c:1364:        "lfence; rdpmc; lfence                   \n"
+common/nanoBench.c:1400:        "lfence; rdmsr; lfence                   \n"
+common/nanoBench.c:1404:        "lfence; rdmsr; lfence                   \n"
+common/nanoBench.c:1419:        "lfence; rdmsr; lfence                   \n"
+common/nanoBench.c:1425:        "lfence; rdmsr; lfence                   \n"
+common/nanoBench.c:1448:        "lfence; rdmsr; lfence                   \n"
+common/nanoBench.c:1452:        "lfence; rdmsr; lfence                   \n"
+common/nanoBench.c:1458:        "lfence; rdmsr; lfence                   \n"
+common/nanoBench.c:1462:        "lfence; rdmsr; lfence                   \n"
+common/nanoBench.c:1547:        "lfence; rdmsr; lfence                   \n"
+common/nanoBench.c:1562:        "lfence; rdmsr; lfence                   \n"
+common/nanoBench.c:1578:        "lfence; rdmsr; lfence                   \n"
+common/nanoBench.c:1585:        "lfence; rdmsr; lfence                   \n"
+common/nanoBench.c:1606:        "wrmsr                                  \n"
+common/nanoBench.c:1616:        "wrmsr                                  \n"
+common/nanoBench.c:1629:        "wrmsr                                  \n"
+common/nanoBench.c:1636:        "wrmsr                                  \n"
+user/nanoBench_main.c:164:    if (check_cpuid()) {
+kernel/nb_km.c:23:#include <../arch/x86/include/asm/fpu/api.h>
+kernel/nb_km.c:211:        for (int j=0; j<config.n_wrmsr; j++) {
+kernel/nb_km.c:212:            count += sprintf(&(buf[count]), "msr_%lX=0x%lX", config.wrmsr[j], config.wrmsr_val[j]);
+kernel/nb_km.c:213:            if (j<config.n_wrmsr-1) count += sprintf(&(buf[count]), ".");
+kernel/nb_km.c:215:        count += sprintf(&(buf[count]), " msr_%lX %s\n", config.rdmsr, config.description);
+kernel/nb_km.c:407:    return sprintf(buf, "R14 size: %zu MB\nVirtual address: 0x%px\nPhysical address: %pa\n", i*KMALLOC_MAX/(1024*1024), r14_segments[0], &phys_addr);
+kernel/nb_km.c:462:    count += sprintf(&(buf[count]), "R14: 0x%px\n", runtime_r14);
+kernel/nb_km.c:767:        set_bit_in_msr(MSR_IA32_PERFEVTSEL0 + (pmi_counter - 3), 20);
+kernel/nb_km.c:778:            write_msr(MSR_IA32_PMC0 + (pmi_counter - 3), pmi_counter_val);
+kernel/nb_km.c:797:        clear_bit_in_msr(MSR_IA32_PERFEVTSEL0 + (pmi_counter - 3), 20);
+kernel/nb_km.c:828:    write_msr(MSR_IA32_PERFEVTSEL0+2, perfevtsel2);
+kernel/nb_km.c:854:    write_msr(MSR_IA32_PERFEVTSEL0+2, perfevtsel2);
+kernel/nb_km.c:1043:    if (check_cpuid()) {

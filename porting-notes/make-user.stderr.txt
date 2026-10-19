@@ -1,0 +1,7 @@
+In file included from ../common/nanoBench.c:12:
+../common/nanoBench.h:29:10: fatal error: cpuid.h: No such file or directory
+   29 | #include <cpuid.h>
+      |          ^~~~~~~~~
+compilation terminated.
+make[1]: *** [Makefile:8: nanoBench.o] Error 1
+make: *** [Makefile:6: user] Error 2
