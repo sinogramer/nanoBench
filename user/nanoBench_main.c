@@ -262,19 +262,64 @@ int main(int argc, char **argv) {
     /*************************************
      * Fixed-function counters
      ************************************/
+    // if (use_fixed_counters) {
+    //     if (is_AMD_CPU) {
+    //         if (no_mem) {
+    //             measurement_template = (char*)&measurement_RDTSC_template_noMem;
+    //         } else {
+    //             measurement_template = (char*)&measurement_RDTSC_template;
+    //         }
+    //     } else {
+    //         if (no_mem) {
+    //             measurement_template = (char*)&measurement_FF_template_Intel_noMem;
+    //         } else {
+    //             measurement_template = (char*)&measurement_FF_template_Intel;
+    //         }
+    //     }
+
+    //     if (is_AMD_CPU) {
+    //         run_experiment(measurement_template, measurement_results_base, 1, base_unroll_count, base_loop_count);
+    //         run_experiment(measurement_template, measurement_results, 1, main_unroll_count, main_loop_count);
+
+    //         if (verbose) {
+    //             printf("\nRDTSC results (unroll_count=%ld, loop_count=%ld):\n\n", base_unroll_count, base_loop_count);
+    //             print_all_measurement_results(measurement_results_base, 1);
+    //             printf("RDTSC results (unroll_count=%ld, loop_count=%ld):\n\n", main_unroll_count, main_loop_count);
+    //             print_all_measurement_results(measurement_results, 1);
+    //         }
+
+    //         printf("%s", compute_result_str(buf, sizeof(buf), "RDTSC", 0));
+    //     } else {
+    //         configure_perf_ctrs_FF_Intel(usr, os);
+
+    //         run_experiment(measurement_template, measurement_results_base, 4, base_unroll_count, base_loop_count);
+    //         run_experiment(measurement_template, measurement_results, 4, main_unroll_count, main_loop_count);
+
+    //         if (verbose) {
+    //             printf("\nRDTSC and fixed-function counter results (unroll_count=%ld, loop_count=%ld):\n\n", base_unroll_count, base_loop_count);
+    //             print_all_measurement_results(measurement_results_base, 4);
+    //             printf("RDTSC and fixed-function counter results (unroll_count=%ld, loop_count=%ld):\n\n", main_unroll_count, main_loop_count);
+    //             print_all_measurement_results(measurement_results, 4);
+    //         }
+
+    //         printf("%s", compute_result_str(buf, sizeof(buf), "RDTSC", 0));
+    //         printf("%s", compute_result_str(buf, sizeof(buf), "Instructions retired", 1));
+    //         printf("%s", compute_result_str(buf, sizeof(buf), "Core cycles", 2));
+    //         printf("%s", compute_result_str(buf, sizeof(buf), "Reference cycles", 3));
+    //     }
+    // }
+
     if (use_fixed_counters) {
+    #if defined(__riscv)
+        print_error("Fixed-counter measurements are not implemented for the RISC-V backend yet");
+        return 1;
+    #elif defined(__x86_64__) || defined(__i386__)
         if (is_AMD_CPU) {
-            if (no_mem) {
-                measurement_template = (char*)&measurement_RDTSC_template_noMem;
-            } else {
-                measurement_template = (char*)&measurement_RDTSC_template;
-            }
+            measurement_template = no_mem ? (char *)&measurement_RDTSC_template_noMem
+                                        : (char *)&measurement_RDTSC_template;
         } else {
-            if (no_mem) {
-                measurement_template = (char*)&measurement_FF_template_Intel_noMem;
-            } else {
-                measurement_template = (char*)&measurement_FF_template_Intel;
-            }
+            measurement_template = no_mem ? (char *)&measurement_FF_template_Intel_noMem
+                                        : (char *)&measurement_FF_template_Intel;
         }
 
         if (is_AMD_CPU) {
@@ -291,7 +336,6 @@ int main(int argc, char **argv) {
             printf("%s", compute_result_str(buf, sizeof(buf), "RDTSC", 0));
         } else {
             configure_perf_ctrs_FF_Intel(usr, os);
-
             run_experiment(measurement_template, measurement_results_base, 4, base_unroll_count, base_loop_count);
             run_experiment(measurement_template, measurement_results, 4, main_unroll_count, main_loop_count);
 
@@ -307,39 +351,132 @@ int main(int argc, char **argv) {
             printf("%s", compute_result_str(buf, sizeof(buf), "Core cycles", 2));
             printf("%s", compute_result_str(buf, sizeof(buf), "Reference cycles", 3));
         }
+    #else
+    #error "Unsupported architecture"
+    #endif
     }
 
     /*************************************
      * Programmable counters
      ************************************/
-    int n_used_counters = n_programmable_counters;
+    // int n_used_counters = n_programmable_counters;
+    // if (is_AMD_CPU) {
+    //     if (no_mem) {
+    //         measurement_template = (char*)&measurement_template_AMD_noMem;
+    //     } else {
+    //         measurement_template = (char*)&measurement_template_AMD;
+    //     }
+    // } else {
+    //     if (n_used_counters >= 4) {
+    //         n_used_counters = 4;
+    //         if (no_mem) {
+    //              measurement_template = (char*)&measurement_template_Intel_noMem_4;
+    //         } else {
+    //             measurement_template = (char*)&measurement_template_Intel_4;
+    //         }
+    //     } else {
+    //         n_used_counters = 2;
+    //         if (no_mem) {
+    //             measurement_template = (char*)&measurement_template_Intel_noMem_2;
+    //         } else {
+    //             measurement_template = (char*)&measurement_template_Intel_2;
+    //         }
+    //     }
+    // }
+
+    int n_used_counters = 0;
+
+    #if defined(__riscv)
+
+    n_used_counters = n_programmable_counters;
+
+    /*
+    * measurement_results[] and pfc_mem[] currently have
+    * MAX_PROGRAMMABLE_COUNTERS entries.
+    */
+    if (n_used_counters > MAX_PROGRAMMABLE_COUNTERS) {
+        n_used_counters = MAX_PROGRAMMABLE_COUNTERS;
+    }
+
+    if (n_used_counters < 1) {
+        print_error("No programmable PMU counters are available");
+
+        return 1;
+    }
+
+    if (no_mem) {
+        measurement_template = (char *)&measurement_template_RISCV_noMem;
+    } else {
+        measurement_template = (char *)&measurement_template_RISCV;
+    }
+
+    #elif defined(__x86_64__) || defined(__i386__)
+
+    n_used_counters = n_programmable_counters;
+
     if (is_AMD_CPU) {
         if (no_mem) {
-            measurement_template = (char*)&measurement_template_AMD_noMem;
+            measurement_template = (char *)&measurement_template_AMD_noMem;
         } else {
-            measurement_template = (char*)&measurement_template_AMD;
+            measurement_template = (char *)&measurement_template_AMD;
         }
     } else {
         if (n_used_counters >= 4) {
             n_used_counters = 4;
+
             if (no_mem) {
-                 measurement_template = (char*)&measurement_template_Intel_noMem_4;
+                measurement_template = (char *)&measurement_template_Intel_noMem_4;
             } else {
-                measurement_template = (char*)&measurement_template_Intel_4;
+                measurement_template = (char *)&measurement_template_Intel_4;
             }
         } else {
             n_used_counters = 2;
+
             if (no_mem) {
-                measurement_template = (char*)&measurement_template_Intel_noMem_2;
+                measurement_template = (char *)&measurement_template_Intel_noMem_2;
             } else {
-                measurement_template = (char*)&measurement_template_Intel_2;
+                measurement_template = (char *)&measurement_template_Intel_2;
             }
         }
     }
 
+    #else
+    #error "Unsupported architecture"
+    #endif
+
+    // size_t next_pfc_config = 0;
+    // while (next_pfc_config < n_pfc_configs) {
+    //     char* pfc_descriptions[MAX_PROGRAMMABLE_COUNTERS] = {0};
+    //     next_pfc_config = configure_perf_ctrs_programmable(next_pfc_config, usr, os, n_used_counters, 0, pfc_descriptions);
+
+    //     run_experiment(measurement_template, measurement_results_base, n_used_counters, base_unroll_count, base_loop_count);
+    //     run_experiment(measurement_template, measurement_results, n_used_counters, main_unroll_count, main_loop_count);
+
+    //     if (verbose) {
+    //         printf("\nProgrammable counter results (unroll_count=%ld, loop_count=%ld):\n\n", base_unroll_count, base_loop_count);
+    //         print_all_measurement_results(measurement_results_base, n_used_counters);
+    //         printf("Programmable counter results (unroll_count=%ld, loop_count=%ld):\n\n", main_unroll_count, main_loop_count);
+    //         print_all_measurement_results(measurement_results, n_used_counters);
+    //     }
+
+    //     for (size_t c=0; c < n_used_counters; c++) {
+    //         if (pfc_descriptions[c]) printf("%s", compute_result_str(buf, sizeof(buf), pfc_descriptions[c], c));
+    //     }
+    // }
+
     size_t next_pfc_config = 0;
+    #if defined(__riscv)
+    if (n_pfc_configs > 0) {
+        print_error("RISC-V programmable PMU configuration through perf_event_open() is not implemented yet");
+        return 1;
+    }
+    /*
+    * No PMU configuration was requested.
+    * Skip programmable-counter measurements for now.
+    */
+    #elif defined(__x86_64__) || defined(__i386__)
     while (next_pfc_config < n_pfc_configs) {
-        char* pfc_descriptions[MAX_PROGRAMMABLE_COUNTERS] = {0};
+        char *pfc_descriptions[MAX_PROGRAMMABLE_COUNTERS] = {0};
         next_pfc_config = configure_perf_ctrs_programmable(next_pfc_config, usr, os, n_used_counters, 0, pfc_descriptions);
 
         run_experiment(measurement_template, measurement_results_base, n_used_counters, base_unroll_count, base_loop_count);
@@ -352,10 +489,15 @@ int main(int argc, char **argv) {
             print_all_measurement_results(measurement_results, n_used_counters);
         }
 
-        for (size_t c=0; c < n_used_counters; c++) {
-            if (pfc_descriptions[c]) printf("%s", compute_result_str(buf, sizeof(buf), pfc_descriptions[c], c));
+        for (size_t c = 0; c < (size_t)n_used_counters; ++c) {
+            if (pfc_descriptions[c] != NULL) {
+                printf("%s", compute_result_str(buf, sizeof(buf), pfc_descriptions[c], c));
+            }
         }
     }
+    #else
+    #error "Unsupported architecture"
+    #endif
 
     /*************************************
      * Cleanup

@@ -93,6 +93,8 @@ const char* NOPS[] = {
     "\x66\x66\x66\x66\x66\x66\x2e\x0f\x1f\x84\x00\x00\x00\x00\x00"
 };
 
+#if defined(__x86_64__) || defined(__i386__)
+
 void build_cpuid_string(char* buf, unsigned int r0, unsigned int r1, unsigned int r2, unsigned int r3) {
     memcpy(buf,    (char*)&r0, 4);
     memcpy(buf+4,  (char*)&r1, 4);
@@ -165,6 +167,47 @@ bool check_cpuid() {
 
     return false;
 }
+
+#elif defined(__riscv)
+
+bool check_cpuid(void)
+{
+    /*
+     * Temporary RISC-V implementation.
+     *
+     * SpacemiT K3 exposes 14 general-purpose programmable
+     * counters plus dedicated raw cycle/instruction counters.
+     */
+    is_Intel_CPU = false;
+    is_AMD_CPU = false;
+
+    n_programmable_counters = 14;
+
+    /*
+     * The existing variables are x86-specific. Keep sentinel
+     * values until a generic CPU-information structure is added.
+     */
+    displ_family = -1;
+    displ_model = -1;
+    Intel_perf_mon_ver = -1;
+    Intel_FF_ctr_width = -1;
+    Intel_programmable_ctr_width = 64;
+
+    print_user_verbose(
+        "Architecture: RISC-V\n"
+    );
+
+    print_user_verbose(
+        "General-purpose performance counters: %d\n",
+        n_programmable_counters
+    );
+
+    return false;
+}
+
+#else
+#error "Unsupported architecture"
+#endif
 
 void parse_counter_configs() {
     n_pfc_configs = 0;
@@ -307,6 +350,7 @@ uint64_t read_value_from_cmd(char* cmd) {
 }
 #endif
 
+#if defined(__x86_64__) || defined(__i386__)
 uint64_t read_msr(unsigned int msr) {
     #ifdef __KERNEL__
         return native_read_msr(msr);
@@ -521,6 +565,164 @@ void configure_MSRs(struct msr_config config) {
     cur_rdmsr = config.rdmsr;
 }
 
+#elif defined(__riscv)
+
+uint64_t read_msr(unsigned int msr)
+{
+    (void)msr;
+
+    print_error(
+        "read_msr is unavailable on the RISC-V user-space backend"
+    );
+
+    return 0;
+}
+
+void write_msr(unsigned int msr, uint64_t value)
+{
+    (void)msr;
+    (void)value;
+
+    print_error(
+        "write_msr is unavailable on the RISC-V user-space backend"
+    );
+}
+
+void change_bit_in_msr(
+    unsigned int msr,
+    unsigned int bit,
+    bool bit_value)
+{
+    (void)msr;
+    (void)bit;
+    (void)bit_value;
+
+    print_error(
+        "change_bit_in_msr is unavailable on RISC-V"
+    );
+}
+
+void set_bit_in_msr(
+    unsigned int msr,
+    unsigned int bit)
+{
+    (void)msr;
+    (void)bit;
+
+    print_error(
+        "set_bit_in_msr is unavailable on RISC-V"
+    );
+}
+
+void clear_bit_in_msr(
+    unsigned int msr,
+    unsigned int bit)
+{
+    (void)msr;
+    (void)bit;
+
+    print_error(
+        "clear_bit_in_msr is unavailable on RISC-V"
+    );
+}
+
+uint64_t read_pmc(unsigned int counter)
+{
+    (void)counter;
+
+    print_error(
+        "RISC-V direct HPM counter read is not implemented yet"
+    );
+
+    return 0;
+}
+
+void clear_perf_counters(void)
+{
+    /*
+     * RISC-V counters will be reset through perf_event_open()
+     * and PERF_EVENT_IOC_RESET.
+     */
+}
+
+void clear_perf_counter_configurations(void)
+{
+    /*
+     * RISC-V event configuration will be managed through
+     * perf_event_open() and the SBI PMU extension.
+     */
+}
+
+void clear_overflow_status_bits(void)
+{
+}
+
+void enable_perf_ctrs_globally(void)
+{
+}
+
+void disable_perf_ctrs_globally(void)
+{
+}
+
+void enable_freeze_on_PMI(void)
+{
+}
+
+void disable_freeze_on_PMI(void)
+{
+}
+
+void configure_perf_ctrs_FF_Intel(
+    bool usr,
+    bool os)
+{
+    (void)usr;
+    (void)os;
+
+    print_error(
+        "Intel fixed-function counters are unavailable on RISC-V"
+    );
+}
+
+size_t configure_perf_ctrs_programmable(
+    size_t next_pfc_config,
+    bool usr,
+    bool os,
+    int n_counters,
+    int avoid_counters,
+    char *descriptions[])
+{
+    (void)usr;
+    (void)os;
+    (void)n_counters;
+    (void)avoid_counters;
+    (void)descriptions;
+
+    /*
+     * Temporary stub. The RISC-V implementation will open
+     * PERF_TYPE_RAW events through perf_event_open().
+     */
+    print_error(
+        "RISC-V programmable PMU configuration is not implemented yet"
+    );
+
+    return next_pfc_config;
+}
+
+void configure_MSRs(struct msr_config config)
+{
+    (void)config;
+
+    print_error(
+        "MSR configurations are unavailable on RISC-V"
+    );
+}
+
+#else
+#error "Unsupported architecture"
+#endif
+
 size_t get_required_runtime_code_length() {
     size_t req_code_length = code_length + alignment_offset + 64;
     for (size_t i=0; i+7<code_length; i++) {
@@ -721,9 +923,35 @@ void create_runtime_code(char* measurement_template, long local_unroll_count, lo
         continue_outer_loop: ;
     }
     templateI += 8;
+    // do {
+    //     runtime_code[rcI++] = measurement_template[templateI++];
+    // } while (measurement_template[templateI-1] != '\xC3'); // 0xC3 = ret
+    #if defined(__x86_64__) || defined(__i386__)
+
     do {
         runtime_code[rcI++] = measurement_template[templateI++];
-    } while (measurement_template[templateI-1] != '\xC3'); // 0xC3 = ret
+    } while (measurement_template[templateI - 1] != '\xC3');
+
+    #elif defined(__riscv)
+
+    const uint32_t riscv_ret = 0x00008067U;
+
+    for (;;) {
+        uint32_t instruction;
+
+        memcpy(&instruction, &measurement_template[templateI], sizeof(instruction));
+
+        memcpy(&runtime_code[rcI], &measurement_template[templateI], sizeof(instruction));
+
+        templateI += sizeof(instruction);
+        rcI += sizeof(instruction);
+
+        if (instruction == riscv_ret) {
+            break;
+        }
+    }
+
+    #endif
 }
 
 void create_and_run_one_time_init_code() {
@@ -761,11 +989,35 @@ void create_and_run_one_time_init_code() {
         }
     }
     templateI += 8;
-    do {
-        runtime_one_time_init_code[rcI++] = template[templateI++];
-    } while (template[templateI-1] != '\xC3'); // 0xC3 = ret
+    // do {
+    //     runtime_code[rcI++] = measurement_template[templateI++];
+    // } while (measurement_template[templateI-1] != '\xC3'); // 0xC3 = ret
+    #if defined(__x86_64__) || defined(__i386__)
 
-    ((void(*)(void))runtime_one_time_init_code)();
+    do {
+        runtime_code[rcI++] = measurement_template[templateI++];
+    } while (measurement_template[templateI - 1] != '\xC3');
+
+    #elif defined(__riscv)
+
+    const uint32_t riscv_ret = 0x00008067U;
+
+    for (;;) {
+        uint32_t instruction;
+
+        memcpy(&instruction, &template[templateI], sizeof(instruction));
+
+        memcpy(&runtime_code[rcI], &template[templateI], sizeof(instruction));
+
+        templateI += sizeof(instruction);
+        rcI += sizeof(instruction);
+
+        if (instruction == riscv_ret) {
+            break;
+        }
+    }
+    #endif
+
 }
 
 void run_initial_warmup_experiment() {
@@ -898,6 +1150,8 @@ void print_all_measurement_results(int64_t* results[], int n_counters) {
 bool starts_with_magic_bytes(char* c, int64_t magic_bytes) {
     return (*((int64_t*)c) == magic_bytes);
 }
+
+#if defined(__x86_64__) || defined(__i386__)
 
 void measurement_template_Intel_2() {
     SAVE_REGS_FLAGS();
@@ -1655,3 +1909,112 @@ void initial_warm_up_template() {
     RESTORE_REGS_FLAGS();
     asm(".quad "STRINGIFY(MAGIC_BYTES_TEMPLATE_END));
 }
+
+#elif defined(__riscv)
+
+__attribute__((naked, noinline))
+void measurement_template_RISCV(void)
+{
+    __asm__ volatile(
+        ".option push\n"
+        ".option norvc\n"
+
+        ".balign 8\n"
+        ".quad " STRINGIFY(MAGIC_BYTES_INIT) "\n"
+
+        ".balign 8\n"
+        ".quad " STRINGIFY(MAGIC_BYTES_PFC_START) "\n"
+
+        ".balign 8\n"
+        ".quad " STRINGIFY(MAGIC_BYTES_CODE) "\n"
+
+        ".balign 8\n"
+        ".quad " STRINGIFY(MAGIC_BYTES_PFC_END) "\n"
+
+        ".balign 8\n"
+        ".quad " STRINGIFY(MAGIC_BYTES_TEMPLATE_END) "\n"
+
+        "ret\n"
+
+        ".option pop\n"
+    );
+}
+
+__attribute__((naked, noinline))
+void measurement_template_RISCV_noMem(void)
+{
+    __asm__ volatile(
+        ".option push\n"
+        ".option norvc\n"
+
+        ".balign 8\n"
+        ".quad " STRINGIFY(MAGIC_BYTES_INIT) "\n"
+
+        ".balign 8\n"
+        ".quad " STRINGIFY(MAGIC_BYTES_PFC_START) "\n"
+
+        ".balign 8\n"
+        ".quad " STRINGIFY(MAGIC_BYTES_CODE) "\n"
+
+        ".balign 8\n"
+        ".quad " STRINGIFY(MAGIC_BYTES_PFC_END) "\n"
+
+        ".balign 8\n"
+        ".quad " STRINGIFY(MAGIC_BYTES_TEMPLATE_END) "\n"
+
+        "ret\n"
+
+        ".option pop\n"
+    );
+}
+
+__attribute__((naked, noinline))
+void one_time_init_template(void)
+{
+    __asm__ volatile(
+        ".option push\n"
+        ".option norvc\n"
+
+        ".balign 8\n"
+        ".quad " STRINGIFY(MAGIC_BYTES_INIT) "\n"
+
+        ".balign 8\n"
+        ".quad " STRINGIFY(MAGIC_BYTES_TEMPLATE_END) "\n"
+
+        "ret\n"
+
+        ".option pop\n"
+    );
+}
+
+__attribute__((naked, noinline))
+void initial_warm_up_template(void)
+{
+    __asm__ volatile(
+        ".option push\n"
+        ".option norvc\n"
+
+        ".balign 8\n"
+        ".quad " STRINGIFY(MAGIC_BYTES_INIT) "\n"
+
+        ".balign 8\n"
+        ".quad " STRINGIFY(MAGIC_BYTES_PFC_START) "\n"
+
+        ".balign 8\n"
+        ".quad " STRINGIFY(MAGIC_BYTES_CODE) "\n"
+
+        ".balign 8\n"
+        ".quad " STRINGIFY(MAGIC_BYTES_PFC_END) "\n"
+
+        ".balign 8\n"
+        ".quad " STRINGIFY(MAGIC_BYTES_TEMPLATE_END) "\n"
+
+        "ret\n"
+
+        ".option pop\n"
+    );
+}
+
+#else
+#error "Unsupported architecture"
+#endif

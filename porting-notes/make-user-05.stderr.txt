@@ -1,0 +1,28 @@
+nanoBench_main.c: In function ‘main’:
+nanoBench_main.c:467:12: warning: unused variable ‘next_pfc_config’ [-Wunused-variable]
+  467 |     size_t next_pfc_config = 0;
+      |            ^~~~~~~~~~~~~~~
+nanoBench_main.c:257:11: warning: variable ‘measurement_template’ set but not used [-Wunused-but-set-variable]
+  257 |     char* measurement_template;
+      |           ^~~~~~~~~~~~~~~~~~~~
+nanoBench_main.c:256:10: warning: unused variable ‘buf’ [-Wunused-variable]
+  256 |     char buf[100];
+      |          ^~~
+nanoBench_main.c:254:10: warning: unused variable ‘main_loop_count’ [-Wunused-variable]
+  254 |     long main_loop_count = loop_count;
+      |          ^~~~~~~~~~~~~~~
+nanoBench_main.c:253:10: warning: unused variable ‘base_loop_count’ [-Wunused-variable]
+  253 |     long base_loop_count = (basic_mode?0:loop_count);
+      |          ^~~~~~~~~~~~~~~
+nanoBench_main.c:252:10: warning: unused variable ‘main_unroll_count’ [-Wunused-variable]
+  252 |     long main_unroll_count = (basic_mode?unroll_count:2*unroll_count);
+      |          ^~~~~~~~~~~~~~~~~
+nanoBench_main.c:251:10: warning: unused variable ‘base_unroll_count’ [-Wunused-variable]
+  251 |     long base_unroll_count = (basic_mode?0:unroll_count);
+      |          ^~~~~~~~~~~~~~~~~
+nanoBench_main.c:71:10: warning: variable ‘os’ set but not used [-Wunused-but-set-variable]
+   71 |     bool os = 0;
+      |          ^~
+nanoBench_main.c:70:10: warning: variable ‘usr’ set but not used [-Wunused-but-set-variable]
+   70 |     bool usr = 1;
+      |          ^~~

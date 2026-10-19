@@ -1,0 +1,8 @@
+../common/nanoBench.c: In function ‘create_and_run_one_time_init_code’:
+../common/nanoBench.c:1008:31: error: ‘measurement_template’ undeclared (first use in this function); did you mean ‘measurement_results’?
+ 1008 |         memcpy(&instruction, &measurement_template[templateI], sizeof(instruction));
+      |                               ^~~~~~~~~~~~~~~~~~~~
+      |                               measurement_results
+../common/nanoBench.c:1008:31: note: each undeclared identifier is reported only once for each function it appears in
+make[1]: *** [Makefile:8: nanoBench.o] Error 1
+make: *** [Makefile:6: user] Error 2

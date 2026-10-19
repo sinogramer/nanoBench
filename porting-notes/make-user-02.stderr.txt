@@ -1,0 +1,66 @@
+../common/nanoBench.c: In function ‘clear_perf_counters’:
+../common/nanoBench.c:404:23: error: ‘MSR_IA32_FIXED_CTR0’ undeclared (first use in this function)
+  404 |             write_msr(MSR_IA32_FIXED_CTR0+i, 0);
+      |                       ^~~~~~~~~~~~~~~~~~~
+../common/nanoBench.c:404:23: note: each undeclared identifier is reported only once for each function it appears in
+../common/nanoBench.c:407:23: error: ‘MSR_IA32_PMC0’ undeclared (first use in this function)
+  407 |             write_msr(MSR_IA32_PMC0+i, 0);
+      |                       ^~~~~~~~~~~~~
+../common/nanoBench.c:411:23: error: ‘CORE_X86_MSR_PERF_CTR’ undeclared (first use in this function)
+  411 |             write_msr(CORE_X86_MSR_PERF_CTR+(2*i), 0);
+      |                       ^~~~~~~~~~~~~~~~~~~~~
+../common/nanoBench.c: In function ‘clear_perf_counter_configurations’:
+../common/nanoBench.c:418:19: error: ‘MSR_IA32_FIXED_CTR_CTRL’ undeclared (first use in this function)
+  418 |         write_msr(MSR_IA32_FIXED_CTR_CTRL, 0);
+      |                   ^~~~~~~~~~~~~~~~~~~~~~~
+../common/nanoBench.c:420:23: error: ‘MSR_IA32_PERFEVTSEL0’ undeclared (first use in this function)
+  420 |             write_msr(MSR_IA32_PERFEVTSEL0+i, 0);
+      |                       ^~~~~~~~~~~~~~~~~~~~
+../common/nanoBench.c:424:23: error: ‘CORE_X86_MSR_PERF_CTL’ undeclared (first use in this function)
+  424 |             write_msr(CORE_X86_MSR_PERF_CTL + (2*i), 0);
+      |                       ^~~~~~~~~~~~~~~~~~~~~
+../common/nanoBench.c: In function ‘clear_overflow_status_bits’:
+../common/nanoBench.c:431:19: error: ‘IA32_PERF_GLOBAL_STATUS_RESET’ undeclared (first use in this function)
+  431 |         write_msr(IA32_PERF_GLOBAL_STATUS_RESET, read_msr(IA32_PERF_GLOBAL_STATUS));
+      |                   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../common/nanoBench.c:431:59: error: ‘IA32_PERF_GLOBAL_STATUS’ undeclared (first use in this function)
+  431 |         write_msr(IA32_PERF_GLOBAL_STATUS_RESET, read_msr(IA32_PERF_GLOBAL_STATUS));
+      |                                                           ^~~~~~~~~~~~~~~~~~~~~~~
+../common/nanoBench.c: In function ‘enable_perf_ctrs_globally’:
+../common/nanoBench.c:437:19: error: ‘MSR_IA32_PERF_GLOBAL_CTRL’ undeclared (first use in this function)
+  437 |         write_msr(MSR_IA32_PERF_GLOBAL_CTRL, ((uint64_t)7 << 32) | ((1 << n_programmable_counters) - 1));
+      |                   ^~~~~~~~~~~~~~~~~~~~~~~~~
+../common/nanoBench.c: In function ‘disable_perf_ctrs_globally’:
+../common/nanoBench.c:443:19: error: ‘MSR_IA32_PERF_GLOBAL_CTRL’ undeclared (first use in this function)
+  443 |         write_msr(MSR_IA32_PERF_GLOBAL_CTRL, 0);
+      |                   ^~~~~~~~~~~~~~~~~~~~~~~~~
+../common/nanoBench.c: In function ‘enable_freeze_on_PMI’:
+../common/nanoBench.c:449:24: error: ‘MSR_IA32_DEBUGCTL’ undeclared (first use in this function)
+  449 |         set_bit_in_msr(MSR_IA32_DEBUGCTL, 12);
+      |                        ^~~~~~~~~~~~~~~~~
+../common/nanoBench.c: In function ‘disable_freeze_on_PMI’:
+../common/nanoBench.c:455:26: error: ‘MSR_IA32_DEBUGCTL’ undeclared (first use in this function)
+  455 |         clear_bit_in_msr(MSR_IA32_DEBUGCTL, 12);
+      |                          ^~~~~~~~~~~~~~~~~
+../common/nanoBench.c: In function ‘configure_perf_ctrs_FF_Intel’:
+../common/nanoBench.c:463:15: error: ‘MSR_IA32_FIXED_CTR_CTRL’ undeclared (first use in this function)
+  463 |     write_msr(MSR_IA32_FIXED_CTR_CTRL, fixed_ctrl);
+      |               ^~~~~~~~~~~~~~~~~~~~~~~
+../common/nanoBench.c: In function ‘configure_perf_ctrs_programmable’:
+../common/nanoBench.c:501:23: error: ‘MSR_IA32_PERFEVTSEL0’ undeclared (first use in this function)
+  501 |             write_msr(MSR_IA32_PERFEVTSEL0+i, perfevtselx);
+      |                       ^~~~~~~~~~~~~~~~~~~~
+../common/nanoBench.c:507:27: error: ‘MSR_PEBS_FRONTEND’ undeclared (first use in this function)
+  507 |                 write_msr(MSR_PEBS_FRONTEND, config.msr_pf);
+      |                           ^~~~~~~~~~~~~~~~~
+../common/nanoBench.c:510:27: error: ‘MSR_OFFCORE_RSP0’ undeclared (first use in this function)
+  510 |                 write_msr(MSR_OFFCORE_RSP0, config.msr_rsp0);
+      |                           ^~~~~~~~~~~~~~~~
+../common/nanoBench.c:513:27: error: ‘MSR_OFFCORE_RSP1’ undeclared (first use in this function)
+  513 |                 write_msr(MSR_OFFCORE_RSP1, config.msr_rsp1);
+      |                           ^~~~~~~~~~~~~~~~
+../common/nanoBench.c:524:27: error: ‘CORE_X86_MSR_PERF_CTL’ undeclared (first use in this function)
+  524 |                 write_msr(CORE_X86_MSR_PERF_CTL + (2*i), 0);
+      |                           ^~~~~~~~~~~~~~~~~~~~~
+make[1]: *** [Makefile:8: nanoBench.o] Error 1
+make: *** [Makefile:6: user] Error 2

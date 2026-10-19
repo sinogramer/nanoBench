@@ -26,7 +26,14 @@
 #endif
 
 #include <stdbool.h>
-#include <cpuid.h>
+
+#if defined(__x86_64__) || defined(__i386__)
+    #include <cpuid.h>
+#elif defined(__riscv)
+    #include <unistd.h>
+#else
+    #error "Unsupported architecture"
+#endif
 
 #ifdef __KERNEL__
     #define print_error(...) pr_err(__VA_ARGS__)
@@ -41,6 +48,8 @@
     #define max(a,b) (((a) > (b)) ? (a) : (b))
     #define min(a,b) (((a) < (b)) ? (a) : (b))
 #endif
+
+#if defined(__x86_64__) || defined(__i386__)
 
 #undef  MSR_IA32_PMC0
 #define MSR_IA32_PMC0                 0x0C1
@@ -85,6 +94,7 @@
 #define FIXED_CTR_CORE_CYCLES  1
 #define FIXED_CTR_REF_CYCLES   2
 
+#endif
 
 // How often the measurement will be repeated.
 extern long n_measurements;
@@ -306,6 +316,8 @@ void print_all_measurement_results(int64_t* results[], int n_counters);
 
 bool starts_with_magic_bytes(char* c, int64_t magic_bytes);
 
+#if defined(__x86_64__) || defined(__i386__)
+
 // The following functions must not use global variables (or anything that uses RIP-relative addressing)
 void measurement_template_Intel_2(void);
 void measurement_template_Intel_4(void);
@@ -323,9 +335,18 @@ void measurement_RDMSR_template(void);
 void measurement_RDMSR_template_noMem(void);
 void measurement_cycleByCycle_template_Intel(void);
 void measurement_cycleByCycle_template_Intel_noMem(void);
+
+#elif defined(__riscv)
+
+void measurement_template_RISCV(void);
+void measurement_template_RISCV_noMem(void);
+
+#endif
+
 void one_time_init_template(void);
 void initial_warm_up_template(void);
 
+#if defined(__x86_64__) || defined(__i386__)
 // RBX, RBP, and R12–R15 are callee saved registers according to the "System V AMD64 ABI" (https://en.wikipedia.org/wiki/X86_calling_conventions)
 #define SAVE_REGS_FLAGS()                                 \
     asm(".intel_syntax noprefix\n"                        \
@@ -368,5 +389,19 @@ void initial_warm_up_template(void);
         "pop rbp\n"                                       \
         "pop rbx\n"                                       \
         ".att_syntax noprefix");
+
+#elif defined(__riscv)
+
+/*
+ * Initial RISC-V template declarations.
+ */
+// void measurement_template_RISCV(void);
+// void measurement_template_RISCV_noMem(void);
+// void one_time_init_template(void);
+// void initial_warm_up_template(void);
+
+#else
+#error "Unsupported architecture"
+#endif
 
 #endif
