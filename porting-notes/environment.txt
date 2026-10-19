@@ -1,0 +1,63 @@
+=== date ===
+2026-10-19T17:33:40+09:00
+=== uname ===
+Linux spacemitk3 6.18.3-generic #1.0.5.4 SMP PREEMPT_DYNAMIC Wed Jul 15 16:27:49 CST 2026 riscv64 GNU/Linux
+=== gcc ===
+gcc (Bianbu 15.2.0-16ubuntu1bb5) 15.2.0
+Copyright (C) 2025 Free Software Foundation, Inc.
+This is free software; see the source for copying conditions.  There is NO
+warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+=== architecture ===
+riscv64
+=== branch ===
+riscv-nanoBench
+=== commit ===
+36c077fd30db11e8c83cedfcb58daa505d1d0b12
+=== CPU ===
+Architecture:                            riscv64
+Byte Order:                              Little Endian
+CPU(s):                                  16
+On-line CPU(s) list:                     0-15
+Vendor ID:                               0x710
+Model name:                              Spacemit(R) A100
+CPU family:                              0x8000000041000002
+Model:                                   0x10000000d5686200
+Thread(s) per core:                      1
+Core(s) per socket:                      8
+Socket(s):                               1
+Frequency boost:                         disabled
+CPU(s) scaling MHz:                      100%
+CPU max MHz:                             1800.0000
+CPU min MHz:                             614.4000
+Model name:                              Spacemit(R) X100
+CPU family:                              0x8000000058000002
+Model:                                   0x33d8a600
+Thread(s) per core:                      1
+Core(s) per socket:                      8
+Socket(s):                               1
+CPU(s) scaling MHz:                      100%
+CPU max MHz:                             2200.0000
+CPU min MHz:                             614.4000
+L1d cache:                               768 KiB (16 instances)
+L1i cache:                               768 KiB (16 instances)
+L2 cache:                                10 MiB (4 instances)
+Vulnerability Gather data sampling:      Not affected
+Vulnerability Ghostwrite:                Not affected
+Vulnerability Indirect target selection: Not affected
+Vulnerability Itlb multihit:             Not affected
+Vulnerability L1tf:                      Not affected
+Vulnerability Mds:                       Not affected
+Vulnerability Meltdown:                  Not affected
+Vulnerability Mmio stale data:           Not affected
+Vulnerability Old microcode:             Not affected
+Vulnerability Reg file data sampling:    Not affected
+Vulnerability Retbleed:                  Not affected
+Vulnerability Spec rstack overflow:      Not affected
+Vulnerability Spec store bypass:         Not affected
+Vulnerability Spectre v1:                Not affected
+Vulnerability Spectre v2:                Not affected
+Vulnerability Srbds:                     Not affected
+Vulnerability Tsa:                       Not affected
+Vulnerability Tsx async abort:           Not affected
+Vulnerability Vmscape:                   Not affected
