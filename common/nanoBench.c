@@ -719,6 +719,20 @@ void configure_MSRs(struct msr_config config)
     );
 }
 
+static void append_riscv_nop32(char *buffer, size_t *offset)
+{
+    const uint32_t nop = 0x00000013U;
+    memcpy(buffer + *offset, &nop, sizeof(nop));
+    *offset += sizeof(nop);
+}
+
+static void append_riscv_nop16(char *buffer, size_t *offset)
+{
+    const uint16_t nop = 0x0001U;
+    memcpy(buffer + *offset, &nop, sizeof(nop));
+    *offset += sizeof(nop);
+}
+
 #else
 #error "Unsupported architecture"
 #endif
@@ -746,7 +760,7 @@ int get_distance_to_code(char* measurement_template, size_t templateI) {
     return dist;
 }
 
-void create_runtime_code(char* measurement_template, long local_unroll_count, long local_loop_count) {
+bool create_runtime_code(char* measurement_template, long local_unroll_count, long local_loop_count) {
     size_t templateI = 0;
     size_t codeI = 0;
     long unrollI = 0;
@@ -760,7 +774,7 @@ void create_runtime_code(char* measurement_template, long local_unroll_count, lo
         if (starts_with_magic_bytes(&code[i], MAGIC_BYTES_CODE_PFC_START) || starts_with_magic_bytes(&code[i], MAGIC_BYTES_CODE_PFC_STOP)) {
             if (!no_mem) {
                 print_error("starting/stopping the counters is only supported in no_mem mode");
-                return;
+                return false;
             }
             code_contains_magic_bytes = 1;
             break;
@@ -781,11 +795,40 @@ void create_runtime_code(char* measurement_template, long local_unroll_count, lo
             int dist = get_distance_to_code(measurement_template, templateI) + code_late_init_length;
             int n_fill = (64 - ((uintptr_t)&runtime_code[rcI+dist] % 64)) % 64;
             n_fill += alignment_offset;
+
+            #if defined(__x86_64__) || defined(__i386__)
             while (n_fill > 0) {
                 int nop_len = min(15, n_fill);
-                strcpy(&runtime_code[rcI], NOPS[nop_len]); rcI += nop_len;
+                strcpy(&runtime_code[rcI], NOPS[nop_len]); 
+                rcI += nop_len;
                 n_fill -= nop_len;
             }
+            #elif defined(__riscv)
+
+            if ((alignment_offset % 4) != 0) {
+                print_error("RISC-V alignment offset must be a multiple of 4");
+                return false;
+            }
+
+            if ((n_fill % 2) != 0) {
+                print_error("RISC-V alignment padding must be a multiple of 4: %d", n_fill);
+                return false;
+            }
+
+            while (n_fill >= 4) {
+                append_riscv_nop32(runtime_code, &rcI);
+                n_fill -= 4;
+            }
+
+            if (n_fill == 2) {
+                append_riscv_nop16(runtime_code, &rcI);
+                n_fill -= 2;
+            }
+
+            #else
+
+            #error "Unsupported architecture"
+            #endif
 
             if (drain_frontend) {
                 strcpy(&runtime_code[rcI], "\x0F\xAE\xE8"); rcI += 3; // lfence
@@ -951,7 +994,37 @@ void create_runtime_code(char* measurement_template, long local_unroll_count, lo
         }
     }
 
+    __builtin___clear_cache(runtime_code, runtime_code + rcI);
+
     #endif
+
+    #if defined(__riscv) && !defined(__KERNEL__)
+
+    FILE *dump = fopen("/tmp/runtime-code.bin", "wb");
+
+    if (dump == NULL) {
+        perror("fopen /tmp/runtime-code.bin");
+        return false;
+    }
+
+    const size_t written = fwrite(runtime_code, 1, rcI, dump);
+
+    if (fclose(dump) != 0) {
+        perror("fclose /tmp/runtime-code.bin");
+        return false;
+    }
+
+    if (written != rcI) {
+        print_error("Failed to write runtime code: %zu of %zu bytes", written, rcI);
+        return false;
+    } 
+
+    fprintf(stderr, "Dumped %zu bytes to /tmp/runtime-code.bin\n", rcI);
+    __builtin___clear_cache(runtime_code, runtime_code + rcI);
+
+    #endif
+
+    return true;
 }
 
 void create_and_run_one_time_init_code() {
@@ -1016,25 +1089,43 @@ void create_and_run_one_time_init_code() {
             break;
         }
     }
-    #endif
 
+    __builtin___clear_cache(runtime_code, runtime_code + rcI);
+
+    #endif
 }
 
 void run_initial_warmup_experiment() {
     if (!initial_warm_up_count) return;
 
-    create_runtime_code((char*)&initial_warm_up_template, unroll_count, loop_count);
+    if (!create_runtime_code((char*)&initial_warm_up_template, unroll_count, loop_count)) {
+        print_error("Failed to generate runtime code");
+        return;
+    }
 
     for (int i=0; i<initial_warm_up_count; i++) {
-        ((void(*)(void))runtime_code)();
+        #if defined(__riscv)
+        typedef void (*riscv_benchmark_fn)(int64_t *);
+        ((riscv_benchmark_fn)runtime_code)(pfc_mem);
+        #else
+        ((void (*)(void))runtime_code)();
+        #endif
     }
 }
 
 void run_experiment(char* measurement_template, int64_t* results[], int n_counters, long local_unroll_count, long local_loop_count) {
-    create_runtime_code(measurement_template, local_unroll_count, local_loop_count);
+    if (!create_runtime_code(measurement_template, local_unroll_count, local_loop_count)) {
+        print_error("Failed to generate runtime code");
+        return;
+    }
 
     for (long ri=-warm_up_count; ri<n_measurements; ri++) {
-        ((void(*)(void))runtime_code)();
+        #if defined(__riscv)
+        typedef void (*riscv_benchmark_fn)(int64_t *);
+        ((riscv_benchmark_fn)runtime_code)(pfc_mem);
+        #else
+        ((void (*)(void))runtime_code)();
+        #endif
 
         for (int c=0; c<n_counters; c++) {
             results[c][max(0L, ri)] = pfc_mem[c];
@@ -2011,6 +2102,94 @@ void initial_warm_up_template(void)
 
         "ret\n"
 
+        ".option pop\n"
+    );
+}
+
+// __attribute__((naked, noinline))
+// void measurement_FF_template_RISCV(void)
+// {
+//     __asm__ volatile(
+//         ".option push\n"
+//         ".option norvc\n"
+
+//         ".balign 8\n"
+//         ".quad " STRINGIFY(MAGIC_BYTES_INIT) "\n"
+
+//         "li t0, " STRINGIFY(MAGIC_BYTES_PFC) "\n"
+//         "sd zero, 0(t0)\n"
+//         "sd zero, 8(t0)\n"
+
+//         "rdcycle t1\n"
+//         "rdinstret t2\n"
+//         "sub zero, zero, zero\n"
+
+//         "neg t1, t1\n"
+//         "neg t2, t2\n"
+//         "sd t1, 0(t0)\n"
+//         "sd t2, 8(t0)\n"
+
+//         ".balign 8\n"
+//         ".quad " STRINGIFY(MAGIC_BYTES_CODE) "\n"
+
+//         "rdinstret t2\n"
+//         "rdcycle t1\n"
+//         "li t0, " STRINGIFY(MAGIC_BYTES_PFC) "\n"
+
+//         "ld t3, 0(t0)\n"
+//         "add t3, t3, t1\n"
+//         "sd t3, 0(t0)\n"
+
+//         "ld t3, 8(t0)\n"
+//         "add t3, t3, t2\n"
+//         "sd t3, 8(t0)\n"
+
+//         ".balign 8\n"
+//         ".quad " STRINGIFY(MAGIC_BYTES_TEMPLATE_END) "\n"
+
+//         "ret\n"
+//         ".option pop\n"
+//     );
+// }
+
+__attribute__((naked, noinline))
+void measurement_FF_template_RISCV(void)
+{
+    __asm__ volatile(
+        ".option push\n"
+        ".option norvc\n"
+
+        ".balign 8\n"
+        ".quad " STRINGIFY(MAGIC_BYTES_INIT) "\n"
+
+        "sd zero, 0(a0)\n"
+        "sd zero, 8(a0)\n"
+
+        "rdcycle t0\n"
+        "rdinstret t1\n"
+        "neg t0, t0\n"
+        "neg t1, t1\n"
+        "sd t0, 0(a0)\n"
+        "sd t1, 8(a0)\n"
+
+        ".balign 8\n"
+        ".quad " STRINGIFY(MAGIC_BYTES_CODE) "\n"
+
+        "rdinstret t1\n"
+        "rdcycle t0\n"
+
+        "ld t2, 0(a0)\n"
+        "add t2, t2, t0\n"
+        "sd t2, 0(a0)\n"
+
+        "ld t2, 8(a0)\n"
+        "add t2, t2, t1\n"
+        "sd t2, 8(a0)\n"
+
+        ".balign 8\n"
+        ".quad " STRINGIFY(MAGIC_BYTES_TEMPLATE_END) "\n"
+
+        "ret\n"
         ".option pop\n"
     );
 }

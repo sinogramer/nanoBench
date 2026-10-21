@@ -158,6 +158,30 @@ int main(int argc, char **argv) {
             }
     }
 
+    #if defined(__riscv)
+
+    if (loop_count != 0) {
+        print_error("RISC-V backend does not support -loop_count yet");
+        return 1;
+    }
+
+    if (drain_frontend) {
+        print_error("RISC-V backend does not support -df yet");
+        return 1;
+    }
+
+    if (debug) {
+        print_error("RISC-V backend does not support -debug yet");
+        return 1;
+    }
+
+    if (no_mem) {
+        print_error("RISC-V backend does not support -no_mem yet");
+        return 1;
+    }
+
+    #endif
+
     /*************************************
      * Check CPUID and parse config file
      ************************************/
@@ -311,8 +335,26 @@ int main(int argc, char **argv) {
 
     if (use_fixed_counters) {
     #if defined(__riscv)
-        print_error("Fixed-counter measurements are not implemented for the RISC-V backend yet");
-        return 1;
+                
+        measurement_template = (char *)&measurement_FF_template_RISCV;
+
+        run_experiment(measurement_template, measurement_results_base, 2, base_unroll_count, base_loop_count);
+
+        run_experiment(measurement_template, measurement_results, 2, main_unroll_count, main_loop_count);
+
+        if (verbose) {
+            printf("\nRISC-V fixed-counter results "
+                "(unroll_count=%ld, loop_count=%ld):\n\n", base_unroll_count, base_loop_count);
+            print_all_measurement_results(measurement_results_base, 2);
+
+            printf("RISC-V fixed-counter results "
+                "(unroll_count=%ld, loop_count=%ld):\n\n", main_unroll_count, main_loop_count);
+            print_all_measurement_results(measurement_results, 2);
+        }
+
+        printf("%s", compute_result_str(buf, sizeof(buf), "Core cycles", 0));
+        printf("%s", compute_result_str(buf, sizeof(buf), "Instructions retired", 1));
+        
     #elif defined(__x86_64__) || defined(__i386__)
         if (is_AMD_CPU) {
             measurement_template = no_mem ? (char *)&measurement_RDTSC_template_noMem

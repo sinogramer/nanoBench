@@ -280,7 +280,7 @@ void configure_MSRs(struct msr_config config);
 
 size_t get_required_runtime_code_length(void);
 
-void create_runtime_code(char* measurement_template, long local_unroll_count, long local_loop_count);
+bool create_runtime_code(char* measurement_template, long local_unroll_count, long local_loop_count);
 void run_initial_warmup_experiment(void);
 void run_experiment(char* measurement_template, int64_t* results[], int n_counters, long local_unroll_count, long local_loop_count);
 void create_and_run_one_time_init_code(void);
@@ -340,6 +340,9 @@ void measurement_cycleByCycle_template_Intel_noMem(void);
 
 void measurement_template_RISCV(void);
 void measurement_template_RISCV_noMem(void);
+void measurement_FF_template_RISCV(void);
+void one_time_init_template(void);
+void initial_warm_up_template(void);
 
 #endif
 
@@ -389,16 +392,12 @@ void initial_warm_up_template(void);
         "pop rbp\n"                                       \
         "pop rbx\n"                                       \
         ".att_syntax noprefix");
-
+        
 #elif defined(__riscv)
 
 /*
  * Initial RISC-V template declarations.
  */
-// void measurement_template_RISCV(void);
-// void measurement_template_RISCV_noMem(void);
-// void one_time_init_template(void);
-// void initial_warm_up_template(void);
 
 #else
 #error "Unsupported architecture"
