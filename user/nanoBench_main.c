@@ -20,6 +20,10 @@
 
 #include "../common/nanoBench.h"
 
+#if defined(__riscv)
+#include "riscv_pmu.h"
+#endif
+
 void print_usage() {
     printf("\n");
     printf("nanoBench usage:\n");
@@ -213,6 +217,35 @@ int main(int argc, char **argv) {
         return 1;
     }
 
+    #if defined(__riscv)
+
+    struct riscv_pmu_counter test_counter;
+    bool test_counter_open = false;
+
+    // if (!riscv_pmu_open_raw(&test_counter, 0x34, cpu, usr, os)) {
+    //     print_error("Could not open X100 alu_inst event");
+    //     return 1;
+    // }
+
+    // test_counter_open = true;
+
+    // printf("raw selector       : 0x%llx\n", (unsigned long long)test_counter.selector);
+    // printf("perf mmap index    : %u\n", test_counter.perf_index);
+    // printf("hardware index     : %u\n", test_counter.hardware_index);
+    // printf("probable CSR       : hpmcounter%u\n", test_counter.hardware_index);
+    // printf("counter width      : %u\n", test_counter.width);
+
+    // const unsigned int csr = 0xC00U + test_counter.hardware_index;
+    // riscv_pmc_csr_number = csr;
+
+    // const uint32_t csrr_t0 = encode_csrr(5, csr);
+    // printf("CSR number         : 0x%x\n", csr);
+    // printf("csrr t0 encoding   : 0x%08x\n", csrr_t0);
+
+    // riscv_pmu_close(&test_counter);
+
+    #endif
+
     /*************************************
      * Allocate memory
      ************************************/
@@ -354,7 +387,7 @@ int main(int argc, char **argv) {
 
         printf("%s", compute_result_str(buf, sizeof(buf), "Core cycles", 0));
         printf("%s", compute_result_str(buf, sizeof(buf), "Instructions retired", 1));
-        
+
     #elif defined(__x86_64__) || defined(__i386__)
         if (is_AMD_CPU) {
             measurement_template = no_mem ? (char *)&measurement_RDTSC_template_noMem
@@ -506,17 +539,66 @@ int main(int argc, char **argv) {
     //     }
     // }
 
-    size_t next_pfc_config = 0;
     #if defined(__riscv)
-    if (n_pfc_configs > 0) {
-        print_error("RISC-V programmable PMU configuration through perf_event_open() is not implemented yet");
-        return 1;
+
+    // for (size_t config_index = 0; config_index < n_pfc_configs; ++config_index) {
+    //     struct pfc_config *config = &pfc_configs[config_index];
+    //     struct riscv_pmu_counter counter;
+
+    //     if (!riscv_pmu_open_raw(&counter, config->raw_selector, cpu, usr, os)) {
+    //         print_error("Could not open raw event 0x%llx", (unsigned long long)config->raw_selector);
+    //         return 1;
+    //     }
+
+    //     riscv_pmc_csr_number = 0xC00U + counter.hardware_index;
+
+    //     if (verbose) {
+    //         printf("raw selector       : 0x%llx\n", (unsigned long long)config->raw_selector);
+    //         printf("hardware index     : %u\n", counter.hardware_index);
+    //         printf("CSR number         : 0x%x\n", riscv_pmc_csr_number);
+    //     }
+
+    //     char *pmc_template = (char *)&measurement_template_RISCV_PMC;
+
+    //     run_experiment(pmc_template, measurement_results_base, 1, base_unroll_count, base_loop_count);
+
+    //     run_experiment(pmc_template, measurement_results, 1, main_unroll_count, main_loop_count);
+
+    //     printf("%s", compute_result_str(buf, sizeof(buf), config->description, 0));
+
+    //     riscv_pmu_close(&counter);
+    // }
+
+    for (size_t config_index = 0; config_index < n_pfc_configs; ++config_index) {
+        struct pfc_config *config = &pfc_configs[config_index];
+        struct riscv_pmu_counter counter;
+
+        fprintf(stderr, "Opening event %zu: selector=0x%llx description=\"%s\"\n", config_index, (unsigned long long)config->raw_selector, config->description);
+
+        if (!riscv_pmu_open_raw(&counter, config->raw_selector, cpu, usr, os)) {
+            print_error("Could not open raw event 0x%llx", (unsigned long long)config->raw_selector);
+            return 1;
+        }
+
+        riscv_pmc_csr_number = 0xC00U + counter.hardware_index;
+
+        fprintf(stderr, "  perf index=%u hardware index=%u CSR=0x%x width=%u\n", counter.perf_index, counter.hardware_index, riscv_pmc_csr_number, counter.width);
+
+        char *pmc_template = (char *)&measurement_template_RISCV_PMC;
+
+        run_experiment(pmc_template, measurement_results_base, 1, base_unroll_count, base_loop_count);
+
+        run_experiment(pmc_template, measurement_results, 1, main_unroll_count, main_loop_count);
+
+        printf("%s", compute_result_str(buf, sizeof(buf), config->description, 0));
+        fflush(stdout);
+
+        riscv_pmu_close(&counter);
     }
-    /*
-    * No PMU configuration was requested.
-    * Skip programmable-counter measurements for now.
-    */
+
     #elif defined(__x86_64__) || defined(__i386__)
+    size_t next_pfc_config = 0;
+    
     while (next_pfc_config < n_pfc_configs) {
         char *pfc_descriptions[MAX_PROGRAMMABLE_COUNTERS] = {0};
         next_pfc_config = configure_perf_ctrs_programmable(next_pfc_config, usr, os, n_used_counters, 0, pfc_descriptions);
@@ -541,9 +623,23 @@ int main(int argc, char **argv) {
     #error "Unsupported architecture"
     #endif
 
+    // #if defined(__riscv)
+    // if (test_counter_open) {
+    //     riscv_pmu_close(&test_counter);
+    // }
+    // #endif
+
     /*************************************
      * Cleanup
      ************************************/
+
+     #if defined(__riscv)
+    for (size_t i = 0; i < n_pfc_configs; ++i) {
+        free(pfc_configs[i].description);
+        pfc_configs[i].description = NULL;
+    }
+    #endif
+
     free(runtime_code);
     free(runtime_one_time_init_code);
     free(runtime_r14 - RUNTIME_R_SIZE/2);

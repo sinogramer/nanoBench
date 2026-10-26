@@ -69,6 +69,10 @@ void* runtime_rsp;
 int64_t pfc_mem[MAX_PROGRAMMABLE_COUNTERS];
 void* RSP_mem;
 
+#if defined(__riscv)
+unsigned int riscv_pmc_csr_number;
+#endif
+
 int64_t* measurement_results[MAX_PROGRAMMABLE_COUNTERS];
 int64_t* measurement_results_base[MAX_PROGRAMMABLE_COUNTERS];
 
@@ -224,11 +228,54 @@ void parse_counter_configs() {
 
         char* config_str = strsep(&line, " \t");
 
-        if (line && strlen(line) > 0) {
-            pfc_configs[n_pfc_configs].description = line;
-        } else {
-            pfc_configs[n_pfc_configs].description = config_str;
+        if (config_str == NULL || *config_str == '\0') {
+            continue;
         }
+
+        while (line != NULL && (*line == ' ' || *line == '\t')) {
+            ++line;
+        }
+
+        // if (line && strlen(line) > 0) {
+        //     pfc_configs[n_pfc_configs].description = line;
+        // } else {
+        //     pfc_configs[n_pfc_configs].description = config_str;
+        // }
+
+        #if defined(__riscv)
+        if (config_str == NULL || *config_str == '\0' || strcmp(config_str, "EOF") == 0) {
+            continue;
+        }
+
+        char *end = NULL;
+        unsigned long selector = strtoul(config_str, &end, 16);
+
+        if (end == config_str || *end != '\0') {
+            print_error("invalid RISC-V raw selector: %s", config_str);
+            continue;
+        }
+
+        if (line != NULL) {
+            line[strcspn(line, "\r\n")] = '\0';
+
+            while (*line == ' ' || *line == '\t') {
+                ++line;
+            }
+        }
+
+        const char *description = line != NULL && *line != '\0' ? line : config_str;
+
+        pfc_configs[n_pfc_configs].raw_selector = selector;
+        pfc_configs[n_pfc_configs].description = strdup(description);
+
+        if (pfc_configs[n_pfc_configs].description == NULL) {
+            print_error("could not allocate event description");
+            continue;
+        }
+
+        n_pfc_configs++;
+        continue;
+        #endif
 
         char buf[50];
         if (strlen(config_str) >= sizeof(buf)) {
@@ -733,6 +780,11 @@ static void append_riscv_nop16(char *buffer, size_t *offset)
     *offset += sizeof(nop);
 }
 
+uint32_t encode_csrr(unsigned int rd, unsigned int csr)
+{
+    return ((csr & 0xfffU) << 20) | (2U << 12) | ((rd & 0x1fU) << 7) | 0x73U;
+}
+
 #else
 #error "Unsupported architecture"
 #endif
@@ -960,6 +1012,18 @@ bool create_runtime_code(char* measurement_template, long local_unroll_count, lo
         } else if (starts_with_magic_bytes(&measurement_template[templateI], MAGIC_BYTES_RUNTIME_RSP)) {
             *(void**)(&runtime_code[rcI]) = runtime_rsp;
             templateI += 8; rcI += 8;
+        #if defined(__riscv)
+        } else if (starts_with_magic_bytes(&measurement_template[templateI], MAGIC_BYTES_RISCV_CSR_START)) {
+            const uint32_t instruction = encode_csrr(5, riscv_pmc_csr_number);
+            memcpy(&runtime_code[rcI], &instruction, sizeof(instruction));
+            templateI += 8;
+            rcI += sizeof(instruction);
+        } else if (starts_with_magic_bytes( &measurement_template[templateI], MAGIC_BYTES_RISCV_CSR_END)) {
+            const uint32_t instruction = encode_csrr(5, riscv_pmc_csr_number);
+            memcpy(&runtime_code[rcI], &instruction, sizeof(instruction));
+            templateI += 8;
+            rcI += sizeof(instruction);
+        #endif
         } else {
             runtime_code[rcI++] = measurement_template[templateI++];
         }
@@ -2059,6 +2123,32 @@ void measurement_template_RISCV_noMem(void)
     );
 }
 
+__attribute__((naked, noinline))
+void measurement_template_RISCV_PMC(void)
+{
+    __asm__ volatile(
+        ".option push\n"
+        ".option norvc\n"
+        ".balign 8\n"
+        ".quad " STRINGIFY(MAGIC_BYTES_INIT) "\n"
+        "sd zero, 0(a0)\n"
+        ".balign 8\n"
+        ".quad " STRINGIFY(MAGIC_BYTES_RISCV_CSR_START) "\n"
+        "neg t0, t0\n"
+        "sd t0, 0(a0)\n"
+        ".balign 8\n"
+        ".quad " STRINGIFY(MAGIC_BYTES_CODE) "\n"
+        ".balign 8\n"
+        ".quad " STRINGIFY(MAGIC_BYTES_RISCV_CSR_END) "\n"
+        "ld t1, 0(a0)\n"
+        "add t1, t1, t0\n"
+        "sd t1, 0(a0)\n"
+        ".balign 8\n"
+        ".quad " STRINGIFY(MAGIC_BYTES_TEMPLATE_END) "\n"
+        "ret\n"
+        ".option pop\n"
+    );
+}
 __attribute__((naked, noinline))
 void one_time_init_template(void)
 {

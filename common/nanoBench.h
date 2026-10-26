@@ -186,6 +186,7 @@ struct pfc_config {
     unsigned long msr_rsp1;
     unsigned int ctr;
     char* description;
+    uint64_t raw_selector;
 };
 extern struct pfc_config pfc_configs[];
 extern size_t n_pfc_configs;
@@ -233,6 +234,10 @@ extern int64_t pfc_mem[MAX_PROGRAMMABLE_COUNTERS];
 
 // Stores the RSP during measurements.
 extern void* RSP_mem;
+
+#if defined(__riscv)
+extern unsigned int riscv_pmc_csr_number;
+#endif
 
 extern int64_t* measurement_results[MAX_PROGRAMMABLE_COUNTERS];
 extern int64_t* measurement_results_base[MAX_PROGRAMMABLE_COUNTERS];
@@ -311,6 +316,9 @@ void print_all_measurement_results(int64_t* results[], int n_counters);
 #define MAGIC_BYTES_CODE_PFC_START 0xE0B513B1C2813F04
 #define MAGIC_BYTES_CODE_PFC_STOP 0xF0B513B1C2813F04
 
+#define MAGIC_BYTES_RISCV_CSR_START 0x1122334455667788ULL
+#define MAGIC_BYTES_RISCV_CSR_END   0x8877665544332211ULL
+
 #define STRINGIFY2(X) #X
 #define STRINGIFY(X) STRINGIFY2(X)
 
@@ -338,9 +346,12 @@ void measurement_cycleByCycle_template_Intel_noMem(void);
 
 #elif defined(__riscv)
 
+uint32_t encode_csrr(unsigned int rd, unsigned int csr);
+
 void measurement_template_RISCV(void);
 void measurement_template_RISCV_noMem(void);
 void measurement_FF_template_RISCV(void);
+void measurement_template_RISCV_PMC(void);
 void one_time_init_template(void);
 void initial_warm_up_template(void);
 

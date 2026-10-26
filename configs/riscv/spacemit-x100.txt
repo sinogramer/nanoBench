@@ -1,0 +1,2 @@
+34 ALU instructions
+2d Issued instructions
