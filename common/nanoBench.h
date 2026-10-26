@@ -291,6 +291,7 @@ void run_experiment(char* measurement_template, int64_t* results[], int n_counte
 void create_and_run_one_time_init_code(void);
 
 char* compute_result_str(char* buf, size_t buf_len, char* desc, int counter);
+double compute_result_value(size_t result_index);
 int64_t get_aggregate_value(int64_t* values, size_t length, size_t scale, int agg_func);
 int64_t normalize(int64_t value);
 int cmpInt64(const void *a, const void *b);
@@ -318,6 +319,8 @@ void print_all_measurement_results(int64_t* results[], int n_counters);
 
 #define MAGIC_BYTES_RISCV_CSR_START 0x1122334455667788ULL
 #define MAGIC_BYTES_RISCV_CSR_END   0x8877665544332211ULL
+#define MAGIC_BYTES_RISCV_LOOP_START 0x4c4f4f5053544152ULL
+#define MAGIC_BYTES_RISCV_LOOP_END   0x4c4f4f50454e4421ULL
 
 #define STRINGIFY2(X) #X
 #define STRINGIFY(X) STRINGIFY2(X)

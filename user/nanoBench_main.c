@@ -52,6 +52,9 @@ void print_usage() {
     printf("  -usr <n>:                       If 1, counts events at a privilege level greater than 0.\n");
     printf("  -os <n>:                        If 1, counts events at a privilege level 0.\n");
     printf("  -debug:                         Generate a breakpoint trap after running the code to be benchmarked.\n");
+    printf("  -instructions_per_block <n>: Number of measured instructions per block.\n");
+    printf("  -measurement <name>:          Measurement type stored in CSV.\n");
+    printf("  -csv <filename>:                Appends measurement results to a CSV file.\n");
 }
 
 size_t mmap_file(char* filename, char** content) {
@@ -66,6 +69,96 @@ size_t mmap_file(char* filename, char** content) {
     return len;
 }
 
+static void write_csv_field(FILE *file, const char *value)
+{
+    const bool quote = strchr(value, ',') != NULL || strchr(value, '"') != NULL ||
+                       strchr(value, '\n') != NULL || strchr(value, '\r') != NULL;
+
+    if (!quote) {
+        fputs(value, file);
+        return;
+    }
+
+    fputc('"', file);
+
+    for (const char *p = value; *p != '\0'; ++p) {
+        if (*p == '"') {
+            fputc('"', file);
+        }
+
+        fputc(*p, file);
+    }
+
+    fputc('"', file);
+}
+
+static FILE *open_csv_file(const char *path)
+{
+    FILE *file = fopen(path, "a+");
+
+    if (file == NULL) {
+        perror("fopen CSV");
+        return NULL;
+    }
+
+    if (fseek(file, 0, SEEK_END) != 0) {
+        perror("fseek CSV");
+        fclose(file);
+        return NULL;
+    }
+
+    const long size = ftell(file);
+
+    if (size < 0) {
+        perror("ftell CSV");
+        fclose(file);
+        return NULL;
+    }
+
+    if (size == 0) {
+        fprintf(file, "architecture,core,cpu,code,code_size,measurement,event,selector,value,"
+                      "instructions_per_block,value_per_instruction,unroll_count,loop_count,aggregate\n");
+    }
+
+    return file;
+}
+
+static bool write_csv_result(FILE *file, const char *core, int cpu,
+                             const char *code_path, size_t code_size, const char *benchmark_name,
+                             const char *measurement, const char *event, const char *selector, 
+                             double value, long instructions_per_block,
+                             long unroll, long loop, const char *aggregate)
+{
+    if (file == NULL) {
+        return true;
+    }
+
+    const char *csv_code_name = benchmark_name != NULL ? benchmark_name : code_path;
+    const double value_per_instruction = value / (double)instructions_per_block;
+
+    write_csv_field(file, "riscv64");
+    fputc(',', file);
+    write_csv_field(file, core);
+    fprintf(file, ",%d,", cpu);
+    write_csv_field(file, csv_code_name);
+    fprintf(file, ",%zu,", code_size);
+    write_csv_field(file, measurement);
+    fputc(',', file);
+    write_csv_field(file, event);
+    fputc(',', file);
+    write_csv_field(file, selector);
+    fprintf(file, ",%.6f,%ld,%.6f,%ld,%ld,", value, instructions_per_block, value_per_instruction, unroll, loop);
+    write_csv_field(file, aggregate);
+    fputc('\n', file);
+
+    if (fflush(file) != 0) {
+        perror("fflush CSV");
+        return false;
+    }
+
+    return true;
+}
+
 int main(int argc, char **argv) {
     /*************************************
      * Parse command-line options
@@ -73,6 +166,14 @@ int main(int argc, char **argv) {
     char* config_file_name = NULL;
     bool usr = 1;
     bool os = 0;
+
+    const char *csv_path = NULL;
+    FILE *csv_file = NULL;
+    const char *aggregate_name = "median";
+    const char *code_path = "";
+    const char *benchmark_name = NULL;
+    long instructions_per_block = 1;
+    const char *measurement_name = "unspecified";
 
     struct option long_opts[] = {
         {"code", required_argument, 0, 'c'},
@@ -101,6 +202,10 @@ int main(int argc, char **argv) {
         {"usr", required_argument, 0, 'r'},
         {"os", required_argument, 0, 's'},
         {"debug", no_argument, &debug, true},
+        {"csv", required_argument,0, 'v'},
+        {"name", required_argument, 0, 'N'},
+        {"instructions_per_block", required_argument, 0, 'B'},
+        {"measurement", required_argument, 0, 'M'},
         {"help", no_argument, 0, 'h'},
         {0, 0, 0, 0}
     };
@@ -111,6 +216,7 @@ int main(int argc, char **argv) {
             case 0:
                 break;
             case 'c':
+                code_path = optarg;
                 code_length = mmap_file(optarg, &code);
                 break;
             case 'i':
@@ -156,18 +262,50 @@ int main(int argc, char **argv) {
             case 's':
                 os = atoi(optarg);
                 break;
+            case 'v':
+                csv_path = optarg;
+                break;
+            case 'N':
+                benchmark_name = optarg;
+                break;
+            case 'B':
+                instructions_per_block = strtol(optarg, NULL, 10);
+
+                if (instructions_per_block <= 0) {
+                    print_error("-instructions_per_block must be greater than zero");
+                    return 1;
+                }
+
+                break;
+
+            case 'M':
+                measurement_name = optarg;
+                break;
             default:
                 print_usage();
                 return 1;
             }
     }
 
-    #if defined(__riscv)
-
-    if (loop_count != 0) {
-        print_error("RISC-V backend does not support -loop_count yet");
-        return 1;
+    switch (aggregate_function) {
+    case AVG_20_80:
+        aggregate_name = "average";
+        break;
+    case MED:
+        aggregate_name = "median";
+        break;
+    case MIN:
+        aggregate_name = "minimum";
+        break;
+    case MAX:
+        aggregate_name = "maximum";
+        break;
+    default:
+        aggregate_name = "unknown";
+        break;
     }
+
+    #if defined(__riscv)
 
     if (drain_frontend) {
         print_error("RISC-V backend does not support -df yet");
@@ -216,6 +354,14 @@ int main(int argc, char **argv) {
         fprintf(stderr, "Error: Could not pin thread to core %d\n", cpu);
         return 1;
     }
+    
+    if (csv_path != NULL) {
+        csv_file = open_csv_file(csv_path);
+
+        if (csv_file == NULL) {
+            return 1;
+        }
+    }
 
     #if defined(__riscv)
 
@@ -245,6 +391,7 @@ int main(int argc, char **argv) {
     // riscv_pmu_close(&test_counter);
 
     #endif
+
 
     /*************************************
      * Allocate memory
@@ -385,8 +532,21 @@ int main(int argc, char **argv) {
             print_all_measurement_results(measurement_results, 2);
         }
 
+        const double cycle_value = compute_result_value(0);
+        const double instret_value = compute_result_value(1);
+
         printf("%s", compute_result_str(buf, sizeof(buf), "Core cycles", 0));
         printf("%s", compute_result_str(buf, sizeof(buf), "Instructions retired", 1));
+
+        if (!write_csv_result(csv_file, "X100", cpu, code_path, code_length, benchmark_name, measurement_name,
+            "Core cycles", "fixed-cycle", cycle_value, instructions_per_block, unroll_count, loop_count, aggregate_name)) {
+            return 1;
+        }
+
+        if (!write_csv_result(csv_file, "X100", cpu, code_path, code_length, benchmark_name, measurement_name,
+            "Instructions retired", "fixed-instret", instret_value, instructions_per_block, unroll_count, loop_count, aggregate_name)) {
+            return 1;
+        }
 
     #elif defined(__x86_64__) || defined(__i386__)
         if (is_AMD_CPU) {
@@ -590,8 +750,20 @@ int main(int argc, char **argv) {
 
         run_experiment(pmc_template, measurement_results, 1, main_unroll_count, main_loop_count);
 
+        const double value = compute_result_value(0);
+        char selector_string[32];
+
+        snprintf(selector_string, sizeof(selector_string), "0x%llx", (unsigned long long)config->raw_selector);
+
         printf("%s", compute_result_str(buf, sizeof(buf), config->description, 0));
         fflush(stdout);
+
+        if (!write_csv_result(csv_file, "X100", cpu, code_path, code_length, benchmark_name, measurement_name,
+                            config->description, selector_string, value, instructions_per_block,
+                            unroll_count, loop_count, aggregate_name)) {
+            riscv_pmu_close(&counter);
+            return 1;
+        }
 
         riscv_pmu_close(&counter);
     }
@@ -632,6 +804,15 @@ int main(int argc, char **argv) {
     /*************************************
      * Cleanup
      ************************************/
+
+     if (csv_file != NULL) {
+        if (fclose(csv_file) != 0) {
+            perror("fclose CSV");
+            return 1;
+        }
+
+        csv_file = NULL;
+    }
 
      #if defined(__riscv)
     for (size_t i = 0; i < n_pfc_configs; ++i) {

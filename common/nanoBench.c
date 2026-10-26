@@ -785,6 +785,37 @@ uint32_t encode_csrr(unsigned int rd, unsigned int csr)
     return ((csr & 0xfffU) << 20) | (2U << 12) | ((rd & 0x1fU) << 7) | 0x73U;
 }
 
+static uint32_t encode_addi(unsigned int rd, unsigned int rs1, int immediate)
+{
+    const uint32_t imm = (uint32_t)immediate & 0xfffU;
+    return (imm << 20) | ((rs1 & 0x1fU) << 15) | ((rd & 0x1fU) << 7) | 0x13U;
+}
+
+static uint32_t encode_beq(unsigned int rs1, unsigned int rs2, int offset)
+{
+    const uint32_t imm = (uint32_t)offset;
+
+    return (((imm >> 12) & 0x1U) << 31) |
+           (((imm >> 5) & 0x3fU) << 25) |
+           ((rs2 & 0x1fU) << 20) |
+           ((rs1 & 0x1fU) << 15) |
+           (((imm >> 1) & 0xfU) << 8) |
+           (((imm >> 11) & 0x1U) << 7) |
+           0x63U;
+}
+
+static uint32_t encode_jal(unsigned int rd, int offset)
+{
+    const uint32_t imm = (uint32_t)offset;
+
+    return (((imm >> 20) & 0x1U) << 31) |
+           (((imm >> 1) & 0x3ffU) << 21) |
+           (((imm >> 11) & 0x1U) << 20) |
+           (((imm >> 12) & 0xffU) << 12) |
+           ((rd & 0x1fU) << 7) |
+           0x6fU;
+}
+
 #else
 #error "Unsupported architecture"
 #endif
@@ -821,6 +852,12 @@ bool create_runtime_code(char* measurement_template, long local_unroll_count, lo
     size_t magic_bytes_pfc_start_I = 0;
     size_t magic_bytes_code_I = 0;
 
+    #if defined(__riscv)
+    size_t riscv_loop_start_offset = 0;
+    bool riscv_loop_start_pending = false;
+    bool riscv_loop_start_seen = false;
+    #endif
+
     int code_contains_magic_bytes = 0;
     for (size_t i=0; i+7<code_length; i++) {
         if (starts_with_magic_bytes(&code[i], MAGIC_BYTES_CODE_PFC_START) || starts_with_magic_bytes(&code[i], MAGIC_BYTES_CODE_PFC_STOP)) {
@@ -839,10 +876,12 @@ bool create_runtime_code(char* measurement_template, long local_unroll_count, lo
             memcpy(&runtime_code[rcI], code_init, code_init_length);
             rcI += code_init_length;
 
+            #if defined(__x86_64__) || defined(__i386__)
             if (local_loop_count > 0) {
                 strcpy(&runtime_code[rcI], "\x49\xC7\xC7"); rcI += 3;
                 *(int32_t*)(&runtime_code[rcI]) = (int32_t)local_loop_count; rcI += 4; // mov R15, local_loop_count
             }
+            #endif
 
             int dist = get_distance_to_code(measurement_template, templateI) + code_late_init_length;
             int n_fill = (64 - ((uintptr_t)&runtime_code[rcI+dist] % 64)) % 64;
@@ -894,6 +933,11 @@ bool create_runtime_code(char* measurement_template, long local_unroll_count, lo
         } else if (starts_with_magic_bytes(&measurement_template[templateI], MAGIC_BYTES_PFC_START)) {
             magic_bytes_pfc_start_I = templateI;
             templateI += 8;
+        #if defined(__riscv)
+        } else if (starts_with_magic_bytes(&measurement_template[templateI], MAGIC_BYTES_RISCV_LOOP_START)) {
+            riscv_loop_start_pending = true;
+            templateI += sizeof(uint64_t);
+        #endif
         } else if (starts_with_magic_bytes(&measurement_template[templateI], MAGIC_BYTES_CODE)) {
             magic_bytes_code_I = templateI;
             templateI += 8;
@@ -916,6 +960,14 @@ bool create_runtime_code(char* measurement_template, long local_unroll_count, lo
                         strcpy(&runtime_code[rcI], NOPS[15]); rcI += 15;
                     }
                 }
+
+                #if defined(__riscv)
+                if (riscv_loop_start_pending) {
+                    riscv_loop_start_offset = rcI;
+                    riscv_loop_start_seen = true;
+                    riscv_loop_start_pending = false;
+                }
+                #endif
 
                 rcI_code_start = rcI;
             }
@@ -947,11 +999,13 @@ bool create_runtime_code(char* measurement_template, long local_unroll_count, lo
             }
 
             if (unrollI >= local_unroll_count) {
+                #if defined(__x86_64__) || defined(__i386__)
                 if (local_loop_count > 0) {
                     strcpy(&runtime_code[rcI], "\x49\xFF\xCF"); rcI += 3; // dec R15
                     strcpy(&runtime_code[rcI], "\x0F\x85"); rcI += 2;
                     *(int32_t*)(&runtime_code[rcI]) = (int32_t)(rcI_code_start-rcI-4); rcI += 4; // jnz loop_start
                 }
+                #endif
 
                 if (drain_frontend) {
                     // We add an lfence followed by nop instructions s.t. the front end gets drained and the following instruction begins on a 32-byte boundary.
@@ -1023,6 +1077,37 @@ bool create_runtime_code(char* measurement_template, long local_unroll_count, lo
             memcpy(&runtime_code[rcI], &instruction, sizeof(instruction));
             templateI += 8;
             rcI += sizeof(instruction);
+        } else if (starts_with_magic_bytes(&measurement_template[templateI], MAGIC_BYTES_RISCV_LOOP_END)) {
+            if (!riscv_loop_start_seen) {
+                print_error("RISC-V loop end found before loop start");
+                return false;
+            }
+
+            const uint32_t decrement = encode_addi(26, 26, -1);
+            const uint32_t exit_loop = encode_beq(26, 0, 8);
+
+            const int64_t jal_offset =
+                (int64_t)riscv_loop_start_offset - ((int64_t)rcI + 8);
+
+            if ((jal_offset & 1) != 0 ||
+                jal_offset < -(1LL << 20) ||
+                jal_offset >= (1LL << 20)) {
+                print_error("RISC-V runtime loop exceeds JAL range: %lld", (long long)jal_offset);
+                return false;
+            }
+
+            const uint32_t jump_back = encode_jal(0, (int)jal_offset);
+
+            memcpy(&runtime_code[rcI], &decrement, sizeof(decrement));
+            rcI += sizeof(decrement);
+
+            memcpy(&runtime_code[rcI], &exit_loop, sizeof(exit_loop));
+            rcI += sizeof(exit_loop);
+
+            memcpy(&runtime_code[rcI], &jump_back, sizeof(jump_back));
+            rcI += sizeof(jump_back);
+
+            templateI += sizeof(uint64_t);
         #endif
         } else {
             runtime_code[rcI++] = measurement_template[templateI++];
@@ -1063,29 +1148,28 @@ bool create_runtime_code(char* measurement_template, long local_unroll_count, lo
     #endif
 
     #if defined(__riscv) && !defined(__KERNEL__)
+    if (verbose) {
+        FILE *dump = fopen("/tmp/runtime-code.bin", "wb");
 
-    FILE *dump = fopen("/tmp/runtime-code.bin", "wb");
+        if (dump == NULL) {
+            perror("fopen /tmp/runtime-code.bin");
+            return false;
+        }
 
-    if (dump == NULL) {
-        perror("fopen /tmp/runtime-code.bin");
-        return false;
+        const size_t written = fwrite(runtime_code, 1, rcI, dump);
+
+        if (fclose(dump) != 0) {
+            perror("fclose /tmp/runtime-code.bin");
+            return false;
+        }
+
+        if (written != rcI) {
+            print_error("Failed to write runtime code: %zu of %zu bytes", written, rcI);
+            return false;
+        }
+
+        fprintf(stderr, "Dumped %zu bytes to /tmp/runtime-code.bin\n", rcI);
     }
-
-    const size_t written = fwrite(runtime_code, 1, rcI, dump);
-
-    if (fclose(dump) != 0) {
-        perror("fclose /tmp/runtime-code.bin");
-        return false;
-    }
-
-    if (written != rcI) {
-        print_error("Failed to write runtime code: %zu of %zu bytes", written, rcI);
-        return false;
-    } 
-
-    fprintf(stderr, "Dumped %zu bytes to /tmp/runtime-code.bin\n", rcI);
-    __builtin___clear_cache(runtime_code, runtime_code + rcI);
-
     #endif
 
     return true;
@@ -1169,8 +1253,10 @@ void run_initial_warmup_experiment() {
 
     for (int i=0; i<initial_warm_up_count; i++) {
         #if defined(__riscv)
-        typedef void (*riscv_benchmark_fn)(int64_t *);
-        ((riscv_benchmark_fn)runtime_code)(pfc_mem);
+        typedef void (*runtime_function_t)(int64_t *results, uint64_t repetitions);
+
+        const uint64_t repetitions = loop_count == 0 ? 1 : (uint64_t)loop_count;
+        ((runtime_function_t)runtime_code)(pfc_mem, repetitions);
         #else
         ((void (*)(void))runtime_code)();
         #endif
@@ -1185,8 +1271,10 @@ void run_experiment(char* measurement_template, int64_t* results[], int n_counte
 
     for (long ri=-warm_up_count; ri<n_measurements; ri++) {
         #if defined(__riscv)
-        typedef void (*riscv_benchmark_fn)(int64_t *);
-        ((riscv_benchmark_fn)runtime_code)(pfc_mem);
+        typedef void (*runtime_function_t)(int64_t *results, uint64_t repetitions);
+
+        const uint64_t repetitions = local_loop_count == 0 ? 1 : (uint64_t)local_loop_count;
+        ((runtime_function_t)runtime_code)(pfc_mem, repetitions);
         #else
         ((void (*)(void))runtime_code)();
         #endif
@@ -1225,6 +1313,22 @@ char* compute_result_str(char* buf, size_t buf_len, char* desc, int counter) {
         snprintf(buf, buf_len, "%s: %s%lld.%.2lld%s\n", desc, (result<0?"-":""), ll_abs(result/100), ll_abs(result)%100, range_buf);
     }
     return buf;
+}
+
+double compute_result_value(size_t result_index)
+{
+    const int64_t divisor = no_normalization ? 1 : 100;
+    const int64_t main = get_aggregate_value(
+        measurement_results[result_index], n_measurements, divisor, aggregate_function);
+    const int64_t base = get_aggregate_value(
+        measurement_results_base[result_index], n_measurements, divisor, aggregate_function);
+    const int64_t difference = main - base;
+
+    if (no_normalization) {
+        return (double)difference;
+    }
+
+    return (double)normalize(difference) / 100.0;
 }
 
 int64_t get_aggregate_value(int64_t* values, size_t length, size_t scale, int agg_func) {
@@ -2129,26 +2233,52 @@ void measurement_template_RISCV_PMC(void)
     __asm__ volatile(
         ".option push\n"
         ".option norvc\n"
+
+        "addi sp, sp, -16\n"
+        "sd s10, 0(sp)\n"
+        "sd s11, 8(sp)\n"
+        "mv s11, a0\n"
+        "mv s10, a1\n"
+
         ".balign 8\n"
         ".quad " STRINGIFY(MAGIC_BYTES_INIT) "\n"
-        "sd zero, 0(a0)\n"
+
+        "sd zero, 0(s11)\n"
+
         ".balign 8\n"
         ".quad " STRINGIFY(MAGIC_BYTES_RISCV_CSR_START) "\n"
+
         "neg t0, t0\n"
-        "sd t0, 0(a0)\n"
+        "sd t0, 0(s11)\n"
+
+        ".balign 8\n"
+        ".quad " STRINGIFY(MAGIC_BYTES_RISCV_LOOP_START) "\n"
+
         ".balign 8\n"
         ".quad " STRINGIFY(MAGIC_BYTES_CODE) "\n"
+
+        ".balign 8\n"
+        ".quad " STRINGIFY(MAGIC_BYTES_RISCV_LOOP_END) "\n"
+
         ".balign 8\n"
         ".quad " STRINGIFY(MAGIC_BYTES_RISCV_CSR_END) "\n"
-        "ld t1, 0(a0)\n"
+
+        "ld t1, 0(s11)\n"
         "add t1, t1, t0\n"
-        "sd t1, 0(a0)\n"
+        "sd t1, 0(s11)\n"
+
         ".balign 8\n"
         ".quad " STRINGIFY(MAGIC_BYTES_TEMPLATE_END) "\n"
+
+        "ld s10, 0(sp)\n"
+        "ld s11, 8(sp)\n"
+        "addi sp, sp, 16\n"
         "ret\n"
+
         ".option pop\n"
     );
 }
+
 __attribute__((naked, noinline))
 void one_time_init_template(void)
 {
@@ -2249,37 +2379,53 @@ void measurement_FF_template_RISCV(void)
         ".option push\n"
         ".option norvc\n"
 
+        "addi sp, sp, -16\n"
+        "sd s10, 0(sp)\n"
+        "sd s11, 8(sp)\n"
+        "mv s11, a0\n"
+        "mv s10, a1\n"
+
         ".balign 8\n"
         ".quad " STRINGIFY(MAGIC_BYTES_INIT) "\n"
 
-        "sd zero, 0(a0)\n"
-        "sd zero, 8(a0)\n"
+        "sd zero, 0(s11)\n"
+        "sd zero, 8(s11)\n"
 
         "rdcycle t0\n"
         "rdinstret t1\n"
         "neg t0, t0\n"
         "neg t1, t1\n"
-        "sd t0, 0(a0)\n"
-        "sd t1, 8(a0)\n"
+        "sd t0, 0(s11)\n"
+        "sd t1, 8(s11)\n"
+
+        ".balign 8\n"
+        ".quad " STRINGIFY(MAGIC_BYTES_RISCV_LOOP_START) "\n"
 
         ".balign 8\n"
         ".quad " STRINGIFY(MAGIC_BYTES_CODE) "\n"
 
+        ".balign 8\n"
+        ".quad " STRINGIFY(MAGIC_BYTES_RISCV_LOOP_END) "\n"
+
         "rdinstret t1\n"
         "rdcycle t0\n"
 
-        "ld t2, 0(a0)\n"
+        "ld t2, 0(s11)\n"
         "add t2, t2, t0\n"
-        "sd t2, 0(a0)\n"
+        "sd t2, 0(s11)\n"
 
-        "ld t2, 8(a0)\n"
+        "ld t2, 8(s11)\n"
         "add t2, t2, t1\n"
-        "sd t2, 8(a0)\n"
+        "sd t2, 8(s11)\n"
 
         ".balign 8\n"
         ".quad " STRINGIFY(MAGIC_BYTES_TEMPLATE_END) "\n"
 
+        "ld s10, 0(sp)\n"
+        "ld s11, 8(sp)\n"
+        "addi sp, sp, 16\n"
         "ret\n"
+
         ".option pop\n"
     );
 }
