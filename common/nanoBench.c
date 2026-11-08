@@ -1271,10 +1271,10 @@ void run_experiment(char* measurement_template, int64_t* results[], int n_counte
 
     for (long ri=-warm_up_count; ri<n_measurements; ri++) {
         #if defined(__riscv)
-        typedef void (*runtime_function_t)(int64_t *results, uint64_t repetitions);
+        typedef void (*runtime_function_t)(int64_t *results, uint64_t repetitions, void *scratch_memory);
 
         const uint64_t repetitions = local_loop_count == 0 ? 1 : (uint64_t)local_loop_count;
-        ((runtime_function_t)runtime_code)(pfc_mem, repetitions);
+        ((runtime_function_t)runtime_code)(pfc_mem, repetitions, runtime_r14);
         #else
         ((void (*)(void))runtime_code)();
         #endif
@@ -2234,11 +2234,13 @@ void measurement_template_RISCV_PMC(void)
         ".option push\n"
         ".option norvc\n"
 
-        "addi sp, sp, -16\n"
-        "sd s10, 0(sp)\n"
-        "sd s11, 8(sp)\n"
+        "addi sp, sp, -32\n"
+        "sd s9, 0(sp)\n"
+        "sd s10, 8(sp)\n"
+        "sd s11, 16(sp)\n"
         "mv s11, a0\n"
         "mv s10, a1\n"
+        "mv s9, a2\n"
 
         ".balign 8\n"
         ".quad " STRINGIFY(MAGIC_BYTES_INIT) "\n"
@@ -2269,10 +2271,11 @@ void measurement_template_RISCV_PMC(void)
 
         ".balign 8\n"
         ".quad " STRINGIFY(MAGIC_BYTES_TEMPLATE_END) "\n"
-
-        "ld s10, 0(sp)\n"
-        "ld s11, 8(sp)\n"
-        "addi sp, sp, 16\n"
+        
+        "ld s9, 0(sp)\n"
+        "ld s10, 8(sp)\n"
+        "ld s11, 16(sp)\n"
+        "addi sp, sp, 32\n"
         "ret\n"
 
         ".option pop\n"
@@ -2379,11 +2382,14 @@ void measurement_FF_template_RISCV(void)
         ".option push\n"
         ".option norvc\n"
 
-        "addi sp, sp, -16\n"
-        "sd s10, 0(sp)\n"
-        "sd s11, 8(sp)\n"
+        "addi sp, sp, -32\n"
+        "sd s9, 0(sp)\n"
+        "sd s10, 8(sp)\n"
+        "sd s11, 16(sp)\n"
         "mv s11, a0\n"
         "mv s10, a1\n"
+        "mv s9, a2\n"
+
 
         ".balign 8\n"
         ".quad " STRINGIFY(MAGIC_BYTES_INIT) "\n"
@@ -2421,9 +2427,10 @@ void measurement_FF_template_RISCV(void)
         ".balign 8\n"
         ".quad " STRINGIFY(MAGIC_BYTES_TEMPLATE_END) "\n"
 
-        "ld s10, 0(sp)\n"
-        "ld s11, 8(sp)\n"
-        "addi sp, sp, 16\n"
+        "ld s9, 0(sp)\n"
+        "ld s10, 8(sp)\n"
+        "ld s11, 16(sp)\n"
+        "addi sp, sp, 32\n"
         "ret\n"
 
         ".option pop\n"

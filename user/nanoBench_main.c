@@ -432,11 +432,16 @@ int main(int argc, char **argv) {
     memset(runtime_rdi, 0, RUNTIME_R_SIZE);
     memset(runtime_rsi, 0, RUNTIME_R_SIZE);
     memset(runtime_rsp, 0, RUNTIME_R_SIZE);
-    runtime_r14 += RUNTIME_R_SIZE/2;
-    runtime_rbp += RUNTIME_R_SIZE/2;
-    runtime_rdi += RUNTIME_R_SIZE/2;
-    runtime_rsi += RUNTIME_R_SIZE/2;
-    runtime_rsp += RUNTIME_R_SIZE/2;
+    // runtime_r14 += RUNTIME_R_SIZE/2;
+    // runtime_rbp += RUNTIME_R_SIZE/2;
+    // runtime_rdi += RUNTIME_R_SIZE/2;
+    // runtime_rsi += RUNTIME_R_SIZE/2;
+    // runtime_rsp += RUNTIME_R_SIZE/2;
+    runtime_r14 = (char *)runtime_r14 + RUNTIME_R_SIZE / 2;
+    runtime_rbp = (char *)runtime_rbp + RUNTIME_R_SIZE / 2;
+    runtime_rdi = (char *)runtime_rdi + RUNTIME_R_SIZE / 2;
+    runtime_rsi = (char *)runtime_rsi + RUNTIME_R_SIZE / 2;
+    runtime_rsp = (char *)runtime_rsp + RUNTIME_R_SIZE / 2;
 
     for (int i=0; i<MAX_PROGRAMMABLE_COUNTERS; i++) {
         measurement_results[i] = malloc(n_measurements*sizeof(int64_t));

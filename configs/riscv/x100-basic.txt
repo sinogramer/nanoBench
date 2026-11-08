@@ -1,0 +1,5 @@
+2d Issued instructions
+34 ALU instructions
+35 Memory instructions
+36 Vector instructions
+3f FP instructions

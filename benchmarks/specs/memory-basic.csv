@@ -1,0 +1,12 @@
+name,mnemonic,kind,width,latency_supported
+lb,lb,load,1,0
+lbu,lbu,load,1,0
+lh,lh,load,2,0
+lhu,lhu,load,2,0
+lw,lw,load,4,0
+lwu,lwu,load,4,0
+ld,ld,load,8,1
+sb,sb,store,1,0
+sh,sh,store,2,0
+sw,sw,store,4,0
+sd,sd,store,8,0

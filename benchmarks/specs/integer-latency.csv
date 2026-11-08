@@ -1,0 +1,4 @@
+name,mnemonic,init
+add,add,"li t3,3;li t4,5;li t5,7"
+xor,xor,"li t3,3;li t4,5;li t5,7"
+mul,mul,"li t3,3;li t4,5;li t5,7"

@@ -1,11 +1,27 @@
-CC=gcc
-CFLAGS=-Wall
+CC ?= gcc
+ARCH ?= $(shell uname -m)
 
-all: nanoBench
-nanoBench: nanoBench_main.o nanoBench.o
+CFLAGS += -O2 -Wall -Wextra
+LDFLAGS ?=
+
+OBJS = nanoBench_main.o nanoBench.o
+
+ifeq ($(ARCH),riscv64)
+CFLAGS += -DNB_ARCH_RISCV64
+OBJS += riscv_pmu.o
+endif
+
+nanoBench: $(OBJS)
+	$(CC) $(LDFLAGS) -o $@ $(OBJS)
+
 nanoBench_main.o: nanoBench_main.c ../common/nanoBench.h
+	$(CC) $(CFLAGS) -c nanoBench_main.c -o $@
+
 nanoBench.o: ../common/nanoBench.c ../common/nanoBench.h
 	$(CC) $(CFLAGS) -c ../common/nanoBench.c -o $@
 
+riscv_pmu.o: riscv_pmu.c riscv_pmu.h
+	$(CC) $(CFLAGS) -c riscv_pmu.c -o $@
+
 clean:
-	rm -f nanoBench *.o
+	rm -f nanoBench $(OBJS)

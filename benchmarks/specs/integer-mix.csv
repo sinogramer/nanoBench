@@ -1,0 +1,7 @@
+name,mnemonic_a,mnemonic_b
+add_xor,add,xor
+add_sll,add,sll
+add_slt,add,slt
+add_mul,add,mul
+sll_mul,sll,mul
+xor_mul,xor,mul

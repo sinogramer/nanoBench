@@ -1,0 +1,15 @@
+name,mnemonic,enabled
+add,add,1
+sub,sub,1
+xor,xor,1
+or,or,1
+and,and,1
+sll,sll,1
+srl,srl,1
+sra,sra,1
+slt,slt,1
+sltu,sltu,1
+mul,mul,1
+mulh,mulh,1
+mulhu,mulhu,1
+mulhsu,mulhsu,1
