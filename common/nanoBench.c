@@ -800,37 +800,26 @@ static uint32_t encode_sd(unsigned int rs2, unsigned int rs1, int offset)
 }
 
 /*
- * Registers that receive the counter values. At the CSR_START/CSR_END points
- * of measurement_template_RISCV_PMC all of them are free: a0-a2 have been
- * copied to s9-s11, and s0-s8 are saved by RISCV_TEMPLATE_PROLOGUE.
- * t0-t6 (7) + a0-a7 (8) + s0-s8 (9) = 24 = MAX_PROGRAMMABLE_COUNTERS
- */
-static const unsigned int riscv_counter_regs[] = {
-    5, 6, 7, 28, 29, 30, 31,                /* t0-t6 */
-    10, 11, 12, 13, 14, 15, 16, 17,         /* a0-a7 */
-    8, 9, 18, 19, 20, 21, 22, 23, 24,       /* s0-s8 */
-};
-
-/*
- * Emits "csrr r_i, csr_i" for all counters, followed by "sd r_i, 8*(slot+i)(s11)".
- * All CSRs are read back-to-back first so that the counters are sampled as
- * close together as possible; the stores come afterwards.
+ * Emits "csrr t0, csr_i; sd t0, 8*(first_slot+i)(s11)" for every counter.
+ *
+ * Only t0 is used: CSR_START comes after the init code (-code_init), so any
+ * other register would destroy values the init code has set up. The start
+ * and the end reads use the same order, so for every counter the same number
+ * of instructions (2*(n-1) + benchmark code) lies between its two reads; this
+ * constant cancels out in the base/main difference.
  */
 static size_t emit_riscv_counter_reads(char *buffer, size_t offset, int first_slot)
 {
-    _Static_assert(sizeof(riscv_counter_regs) / sizeof(riscv_counter_regs[0]) >= MAX_PROGRAMMABLE_COUNTERS,
-                   "not enough registers for counter reads");
+    const unsigned int t0 = 5, s11 = 27;
 
     for (unsigned int i = 0; i < riscv_n_counters; i++) {
-        const uint32_t instruction = encode_csrr(riscv_counter_regs[i], riscv_counter_csr[i]);
-        memcpy(&buffer[offset], &instruction, sizeof(instruction));
-        offset += sizeof(instruction);
-    }
+        const uint32_t read = encode_csrr(t0, riscv_counter_csr[i]);
+        const uint32_t store = encode_sd(t0, s11, 8 * (first_slot + (int)i));
 
-    for (unsigned int i = 0; i < riscv_n_counters; i++) {
-        const uint32_t instruction = encode_sd(riscv_counter_regs[i], 27 /* s11 */, 8 * (first_slot + (int)i));
-        memcpy(&buffer[offset], &instruction, sizeof(instruction));
-        offset += sizeof(instruction);
+        memcpy(&buffer[offset], &read, sizeof(read));
+        offset += sizeof(read);
+        memcpy(&buffer[offset], &store, sizeof(store));
+        offset += sizeof(store);
     }
 
     return offset;
@@ -2265,6 +2254,8 @@ void initial_warm_up_template() {
  *
  * After the prologue:  s11 = a0 (results), s10 = a1 (loop count), s9 = a2 (scratch)
  * The benchmark code must not modify sp, s9, s10, s11.
+ * t0 is overwritten by the counter reads between the init code and the
+ * benchmark code, so values set in t0 by the init code are lost.
  */
 #define RISCV_TEMPLATE_PROLOGUE \
         "addi sp, sp, -128\n"   \
