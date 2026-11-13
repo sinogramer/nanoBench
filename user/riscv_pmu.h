@@ -3,6 +3,7 @@
 
 #include <linux/perf_event.h>
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 struct riscv_pmu_counter {
@@ -59,5 +60,14 @@ enum {
 
 void riscv_pmu_group_snapshot(struct riscv_pmu_group *group);
 int riscv_pmu_group_check(const struct riscv_pmu_group *group);
+
+/* Human-readable name of an event ("cycles", "instructions", "raw 0x34"). */
+const char *riscv_pmu_event_name(uint32_t type, uint64_t config, char *buf, size_t len);
+
+/* Value of /proc/sys/kernel/perf_user_access, or -1 if it cannot be read. */
+int riscv_perf_user_access(void);
+
+/* "uarch" (falls back to "model name") of the given hart in /proc/cpuinfo. */
+void riscv_cpu_name(int cpu, char *buf, size_t len);
 
 #endif

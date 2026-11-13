@@ -4,6 +4,7 @@
 
 #include <errno.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
@@ -271,4 +272,76 @@ int riscv_pmu_group_check(const struct riscv_pmu_group *group)
     }
 
     return status;
+}
+
+const char *riscv_pmu_event_name(uint32_t type, uint64_t config, char *buf, size_t len)
+{
+    if (type == PERF_TYPE_HARDWARE && config == PERF_COUNT_HW_CPU_CYCLES) {
+        return "cycles";
+    }
+    if (type == PERF_TYPE_HARDWARE && config == PERF_COUNT_HW_INSTRUCTIONS) {
+        return "instructions";
+    }
+
+    snprintf(buf, len, "%s 0x%llx", type == PERF_TYPE_RAW ? "raw" : "type?", (unsigned long long)config);
+    return buf;
+}
+
+int riscv_perf_user_access(void)
+{
+    FILE *file = fopen("/proc/sys/kernel/perf_user_access", "r");
+    int value = -1;
+
+    if (file != NULL) {
+        if (fscanf(file, "%d", &value) != 1) {
+            value = -1;
+        }
+        fclose(file);
+    }
+
+    return value;
+}
+
+void riscv_cpu_name(int cpu, char *buf, size_t len)
+{
+    char uarch[128] = "";
+    char model[128] = "";
+    char line[512];
+    int current = -1;
+
+    snprintf(buf, len, "riscv64");
+
+    FILE *file = fopen("/proc/cpuinfo", "r");
+    if (file == NULL) {
+        return;
+    }
+
+    while (fgets(line, sizeof(line), file) != NULL) {
+        char *colon = strchr(line, ':');
+        if (colon == NULL) {
+            continue;
+        }
+
+        char *value = colon + 1;
+        while (*value == ' ' || *value == '\t') {
+            ++value;
+        }
+        value[strcspn(value, "\r\n")] = '\0';
+
+        if (strncmp(line, "processor", 9) == 0) {
+            current = atoi(value);
+        } else if (current == cpu && strncmp(line, "uarch", 5) == 0) {
+            snprintf(uarch, sizeof(uarch), "%s", value);
+        } else if (current == cpu && strncmp(line, "model name", 10) == 0) {
+            snprintf(model, sizeof(model), "%s", value);
+        }
+    }
+
+    fclose(file);
+
+    if (uarch[0] != '\0') {
+        snprintf(buf, len, "%s", uarch);
+    } else if (model[0] != '\0') {
+        snprintf(buf, len, "%s", model);
+    }
 }

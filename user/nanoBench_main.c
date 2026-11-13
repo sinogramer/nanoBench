@@ -55,6 +55,7 @@ void print_usage() {
     printf("  -instructions_per_block <n>: Number of measured instructions per block.\n");
     printf("  -measurement <name>:          Measurement type stored in CSV.\n");
     printf("  -csv <filename>:                Appends measurement results to a CSV file.\n");
+    printf("  -n_pmc <n>:                     RISC-V: max. number of raw events per run (default: 14).\n");
 }
 
 size_t mmap_file(char* filename, char** content) {
@@ -174,7 +175,7 @@ static int riscv_post_run(void)
     return riscv_pmu_group_check(riscv_active_group);
 }
 
-static bool riscv_report(FILE *csv_file, int cpu, const char *code_path, size_t code_length,
+static bool riscv_report(FILE *csv_file, const char *core, int cpu, const char *code_path, size_t code_length,
                          const char *benchmark_name, const char *measurement_name, const char *aggregate_name,
                          long instructions_per_block, int index, char *description, const char *selector)
 {
@@ -183,7 +184,7 @@ static bool riscv_report(FILE *csv_file, int cpu, const char *code_path, size_t 
     printf("%s", compute_result_str(buf, sizeof(buf), description, index));
     fflush(stdout);
 
-    return write_csv_result(csv_file, "X100", cpu, code_path, code_length, benchmark_name, measurement_name,
+    return write_csv_result(csv_file, core, cpu, code_path, code_length, benchmark_name, measurement_name,
                             description, selector, compute_result_value((size_t)index), instructions_per_block,
                             unroll_count, loop_count, aggregate_name);
 }
@@ -217,16 +218,25 @@ static int run_riscv_measurements(FILE *csv_file, int cpu, bool usr, bool os,
     size_t next = 0;
     riscv_n_retried_runs = 0;
 
+    const int user_access = riscv_perf_user_access();
+    if (user_access != 1) {
+        fprintf(stderr, "Warning: kernel.perf_user_access=%d; csrr access to perf events needs 1 "
+                        "(sudo sysctl -w kernel.perf_user_access=1)\n", user_access);
+    }
+
+    char core[128];
+    riscv_cpu_name(cpu, core, sizeof(core));
+
     while (next < n_pfc_configs || !fixed_done) {
         size_t remaining = n_pfc_configs - next;
         int batch = remaining < (size_t)max_raw ? (int)remaining : max_raw;
         bool with_fixed = true;
         struct riscv_pmu_group group;
+        struct riscv_pmu_event events[RISCV_PMU_MAX_EVENTS];
         int rc;
 
         /* open {cycles, instructions, raw[next .. next+batch)}; shrink until it fits */
         for (;;) {
-            struct riscv_pmu_event events[RISCV_PMU_MAX_EVENTS];
             int n = 0;
 
             if (with_fixed) {
@@ -264,9 +274,11 @@ static int run_riscv_measurements(FILE *csv_file, int cpu, bool usr, bool os,
             riscv_counter_mask[i] = (width == 0 || width >= 64) ? ~0ULL : ((1ULL << width) - 1);
 
             if (verbose) {
-                fprintf(stderr, "  event %d: config=0x%llx -> hpmcounter%u (CSR 0x%x, width %u)\n", i,
-                        (unsigned long long)group.ctr[i].selector, group.ctr[i].hardware_index,
-                        riscv_counter_csr[i], width);
+                char name[32];
+                const struct riscv_pmu_event *ev = &events[i];
+                fprintf(stderr, "  event %d: %-14s -> hpmcounter%u (CSR 0x%x, width %u)\n", i,
+                        riscv_pmu_event_name(ev->type, ev->config, name, sizeof(name)),
+                        group.ctr[i].hardware_index, riscv_counter_csr[i], width);
             }
         }
 
@@ -292,9 +304,9 @@ static int run_riscv_measurements(FILE *csv_file, int cpu, bool usr, bool os,
         bool ok = true;
 
         if (with_fixed && !fixed_done) {
-            ok = riscv_report(csv_file, cpu, code_path, code_length, benchmark_name, measurement_name,
+            ok = riscv_report(csv_file, core, cpu, code_path, code_length, benchmark_name, measurement_name,
                               aggregate_name, instructions_per_block, 0, "Core cycles", "fixed-cycle") &&
-                 riscv_report(csv_file, cpu, code_path, code_length, benchmark_name, measurement_name,
+                 riscv_report(csv_file, core, cpu, code_path, code_length, benchmark_name, measurement_name,
                               aggregate_name, instructions_per_block, 1, "Instructions retired", "fixed-instret");
             fixed_done = true;
         }
@@ -305,7 +317,7 @@ static int run_riscv_measurements(FILE *csv_file, int cpu, bool usr, bool os,
             char selector[32];
             snprintf(selector, sizeof(selector), "0x%llx", (unsigned long long)config->raw_selector);
 
-            ok = riscv_report(csv_file, cpu, code_path, code_length, benchmark_name, measurement_name,
+            ok = riscv_report(csv_file, core, cpu, code_path, code_length, benchmark_name, measurement_name,
                               aggregate_name, instructions_per_block, first_raw + j, config->description, selector);
         }
 
@@ -340,6 +352,7 @@ int main(int argc, char **argv) {
     const char *benchmark_name = NULL;
     long instructions_per_block = 1;
     const char *measurement_name = "unspecified";
+    int n_pmc_override = 0;
 
     struct option long_opts[] = {
         {"code", required_argument, 0, 'c'},
@@ -372,6 +385,7 @@ int main(int argc, char **argv) {
         {"name", required_argument, 0, 'N'},
         {"instructions_per_block", required_argument, 0, 'B'},
         {"measurement", required_argument, 0, 'M'},
+        {"n_pmc", required_argument, 0, 'P'},
         {"help", no_argument, 0, 'h'},
         {0, 0, 0, 0}
     };
@@ -447,6 +461,9 @@ int main(int argc, char **argv) {
             case 'M':
                 measurement_name = optarg;
                 break;
+            case 'P':
+                n_pmc_override = atoi(optarg);
+                break;
             default:
                 print_usage();
                 return 1;
@@ -495,6 +512,10 @@ int main(int argc, char **argv) {
      ************************************/
     if (check_cpuid()) {
         return 1;
+    }
+
+    if (n_pmc_override > 0) {
+        n_programmable_counters = n_pmc_override;
     }
 
     if (config_file_name) {
