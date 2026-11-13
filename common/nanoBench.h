@@ -369,8 +369,6 @@ void measurement_cycleByCycle_template_Intel_noMem(void);
 
 uint32_t encode_csrr(unsigned int rd, unsigned int csr);
 
-void measurement_template_RISCV(void);
-void measurement_template_RISCV_noMem(void);
 void measurement_template_RISCV_PMC(void);
 void one_time_init_template(void);
 void initial_warm_up_template(void);

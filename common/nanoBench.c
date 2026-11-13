@@ -2303,62 +2303,6 @@ void initial_warm_up_template() {
         "ret\n"
 
 __attribute__((naked, noinline))
-void measurement_template_RISCV(void)
-{
-    __asm__ volatile(
-        ".option push\n"
-        ".option norvc\n"
-
-        ".balign 8\n"
-        ".quad " STRINGIFY(MAGIC_BYTES_INIT) "\n"
-
-        ".balign 8\n"
-        ".quad " STRINGIFY(MAGIC_BYTES_PFC_START) "\n"
-
-        ".balign 8\n"
-        ".quad " STRINGIFY(MAGIC_BYTES_CODE) "\n"
-
-        ".balign 8\n"
-        ".quad " STRINGIFY(MAGIC_BYTES_PFC_END) "\n"
-
-        ".balign 8\n"
-        ".quad " STRINGIFY(MAGIC_BYTES_TEMPLATE_END) "\n"
-
-        "ret\n"
-
-        ".option pop\n"
-    );
-}
-
-__attribute__((naked, noinline))
-void measurement_template_RISCV_noMem(void)
-{
-    __asm__ volatile(
-        ".option push\n"
-        ".option norvc\n"
-
-        ".balign 8\n"
-        ".quad " STRINGIFY(MAGIC_BYTES_INIT) "\n"
-
-        ".balign 8\n"
-        ".quad " STRINGIFY(MAGIC_BYTES_PFC_START) "\n"
-
-        ".balign 8\n"
-        ".quad " STRINGIFY(MAGIC_BYTES_CODE) "\n"
-
-        ".balign 8\n"
-        ".quad " STRINGIFY(MAGIC_BYTES_PFC_END) "\n"
-
-        ".balign 8\n"
-        ".quad " STRINGIFY(MAGIC_BYTES_TEMPLATE_END) "\n"
-
-        "ret\n"
-
-        ".option pop\n"
-    );
-}
-
-__attribute__((naked, noinline))
 void measurement_template_RISCV_PMC(void)
 {
     __asm__ volatile(

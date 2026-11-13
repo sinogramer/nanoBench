@@ -550,31 +550,6 @@ int main(int argc, char **argv) {
         }
     }
 
-    #if defined(__riscv)
-
-    // if (!riscv_pmu_open_raw(&test_counter, 0x34, cpu, usr, os)) {
-    //     print_error("Could not open X100 alu_inst event");
-    //     return 1;
-    // }
-
-    // test_counter_open = true;
-
-    // printf("raw selector       : 0x%llx\n", (unsigned long long)test_counter.selector);
-    // printf("perf mmap index    : %u\n", test_counter.perf_index);
-    // printf("hardware index     : %u\n", test_counter.hardware_index);
-    // printf("probable CSR       : hpmcounter%u\n", test_counter.hardware_index);
-    // printf("counter width      : %u\n", test_counter.width);
-
-    // const unsigned int csr = 0xC00U + test_counter.hardware_index;
-    // riscv_pmc_csr_number = csr;
-
-    // const uint32_t csrr_t0 = encode_csrr(5, csr);
-    // printf("CSR number         : 0x%x\n", csr);
-    // printf("csrr t0 encoding   : 0x%08x\n", csrr_t0);
-
-    // riscv_pmu_close(&test_counter);
-
-    #endif
 
 
     /*************************************
@@ -616,11 +591,6 @@ int main(int argc, char **argv) {
     memset(runtime_rdi, 0, RUNTIME_R_SIZE);
     memset(runtime_rsi, 0, RUNTIME_R_SIZE);
     memset(runtime_rsp, 0, RUNTIME_R_SIZE);
-    // runtime_r14 += RUNTIME_R_SIZE/2;
-    // runtime_rbp += RUNTIME_R_SIZE/2;
-    // runtime_rdi += RUNTIME_R_SIZE/2;
-    // runtime_rsi += RUNTIME_R_SIZE/2;
-    // runtime_rsp += RUNTIME_R_SIZE/2;
     runtime_r14 = (char *)runtime_r14 + RUNTIME_R_SIZE / 2;
     runtime_rbp = (char *)runtime_rbp + RUNTIME_R_SIZE / 2;
     runtime_rdi = (char *)runtime_rdi + RUNTIME_R_SIZE / 2;
@@ -646,67 +616,30 @@ int main(int argc, char **argv) {
     long base_loop_count = (basic_mode?0:loop_count);
     long main_loop_count = loop_count;
 
-    char buf[100];
-    char* measurement_template;
-
     create_and_run_one_time_init_code();
     run_initial_warmup_experiment();
+
+    #if defined(__riscv)
+
+    /*************************************
+     * Measurements: cycles, instret and the
+     * programmable counters are read in one run
+     ************************************/
+    if (run_riscv_measurements(csv_file, cpu, usr, os, code_path, code_length, benchmark_name,
+                               measurement_name, aggregate_name, instructions_per_block,
+                               base_unroll_count, main_unroll_count, base_loop_count, main_loop_count) != 0) {
+        return 1;
+    }
+
+    #elif defined(__x86_64__) || defined(__i386__)
+
+    char buf[100];
+    char* measurement_template;
 
     /*************************************
      * Fixed-function counters
      ************************************/
-    // if (use_fixed_counters) {
-    //     if (is_AMD_CPU) {
-    //         if (no_mem) {
-    //             measurement_template = (char*)&measurement_RDTSC_template_noMem;
-    //         } else {
-    //             measurement_template = (char*)&measurement_RDTSC_template;
-    //         }
-    //     } else {
-    //         if (no_mem) {
-    //             measurement_template = (char*)&measurement_FF_template_Intel_noMem;
-    //         } else {
-    //             measurement_template = (char*)&measurement_FF_template_Intel;
-    //         }
-    //     }
-
-    //     if (is_AMD_CPU) {
-    //         run_experiment(measurement_template, measurement_results_base, 1, base_unroll_count, base_loop_count);
-    //         run_experiment(measurement_template, measurement_results, 1, main_unroll_count, main_loop_count);
-
-    //         if (verbose) {
-    //             printf("\nRDTSC results (unroll_count=%ld, loop_count=%ld):\n\n", base_unroll_count, base_loop_count);
-    //             print_all_measurement_results(measurement_results_base, 1);
-    //             printf("RDTSC results (unroll_count=%ld, loop_count=%ld):\n\n", main_unroll_count, main_loop_count);
-    //             print_all_measurement_results(measurement_results, 1);
-    //         }
-
-    //         printf("%s", compute_result_str(buf, sizeof(buf), "RDTSC", 0));
-    //     } else {
-    //         configure_perf_ctrs_FF_Intel(usr, os);
-
-    //         run_experiment(measurement_template, measurement_results_base, 4, base_unroll_count, base_loop_count);
-    //         run_experiment(measurement_template, measurement_results, 4, main_unroll_count, main_loop_count);
-
-    //         if (verbose) {
-    //             printf("\nRDTSC and fixed-function counter results (unroll_count=%ld, loop_count=%ld):\n\n", base_unroll_count, base_loop_count);
-    //             print_all_measurement_results(measurement_results_base, 4);
-    //             printf("RDTSC and fixed-function counter results (unroll_count=%ld, loop_count=%ld):\n\n", main_unroll_count, main_loop_count);
-    //             print_all_measurement_results(measurement_results, 4);
-    //         }
-
-    //         printf("%s", compute_result_str(buf, sizeof(buf), "RDTSC", 0));
-    //         printf("%s", compute_result_str(buf, sizeof(buf), "Instructions retired", 1));
-    //         printf("%s", compute_result_str(buf, sizeof(buf), "Core cycles", 2));
-    //         printf("%s", compute_result_str(buf, sizeof(buf), "Reference cycles", 3));
-    //     }
-    // }
-
     if (use_fixed_counters) {
-    #if defined(__riscv)
-        // RISC-V: cycles/instret are read together with the raw events (run_riscv_measurements)
-
-    #elif defined(__x86_64__) || defined(__i386__)
         if (is_AMD_CPU) {
             measurement_template = no_mem ? (char *)&measurement_RDTSC_template_noMem
                                         : (char *)&measurement_RDTSC_template;
@@ -744,68 +677,12 @@ int main(int argc, char **argv) {
             printf("%s", compute_result_str(buf, sizeof(buf), "Core cycles", 2));
             printf("%s", compute_result_str(buf, sizeof(buf), "Reference cycles", 3));
         }
-    #else
-    #error "Unsupported architecture"
-    #endif
     }
 
     /*************************************
      * Programmable counters
      ************************************/
-    // int n_used_counters = n_programmable_counters;
-    // if (is_AMD_CPU) {
-    //     if (no_mem) {
-    //         measurement_template = (char*)&measurement_template_AMD_noMem;
-    //     } else {
-    //         measurement_template = (char*)&measurement_template_AMD;
-    //     }
-    // } else {
-    //     if (n_used_counters >= 4) {
-    //         n_used_counters = 4;
-    //         if (no_mem) {
-    //              measurement_template = (char*)&measurement_template_Intel_noMem_4;
-    //         } else {
-    //             measurement_template = (char*)&measurement_template_Intel_4;
-    //         }
-    //     } else {
-    //         n_used_counters = 2;
-    //         if (no_mem) {
-    //             measurement_template = (char*)&measurement_template_Intel_noMem_2;
-    //         } else {
-    //             measurement_template = (char*)&measurement_template_Intel_2;
-    //         }
-    //     }
-    // }
-
-    int n_used_counters = 0;
-
-    #if defined(__riscv)
-
-    n_used_counters = n_programmable_counters;
-
-    /*
-    * measurement_results[] and pfc_mem[] currently have
-    * MAX_PROGRAMMABLE_COUNTERS entries.
-    */
-    if (n_used_counters > MAX_PROGRAMMABLE_COUNTERS) {
-        n_used_counters = MAX_PROGRAMMABLE_COUNTERS;
-    }
-
-    if (n_used_counters < 1) {
-        print_error("No programmable PMU counters are available");
-
-        return 1;
-    }
-
-    if (no_mem) {
-        measurement_template = (char *)&measurement_template_RISCV_noMem;
-    } else {
-        measurement_template = (char *)&measurement_template_RISCV;
-    }
-
-    #elif defined(__x86_64__) || defined(__i386__)
-
-    n_used_counters = n_programmable_counters;
+    int n_used_counters = n_programmable_counters;
 
     if (is_AMD_CPU) {
         if (no_mem) {
@@ -833,41 +710,9 @@ int main(int argc, char **argv) {
         }
     }
 
-    #else
-    #error "Unsupported architecture"
-    #endif
 
-    // size_t next_pfc_config = 0;
-    // while (next_pfc_config < n_pfc_configs) {
-    //     char* pfc_descriptions[MAX_PROGRAMMABLE_COUNTERS] = {0};
-    //     next_pfc_config = configure_perf_ctrs_programmable(next_pfc_config, usr, os, n_used_counters, 0, pfc_descriptions);
-
-    //     run_experiment(measurement_template, measurement_results_base, n_used_counters, base_unroll_count, base_loop_count);
-    //     run_experiment(measurement_template, measurement_results, n_used_counters, main_unroll_count, main_loop_count);
-
-    //     if (verbose) {
-    //         printf("\nProgrammable counter results (unroll_count=%ld, loop_count=%ld):\n\n", base_unroll_count, base_loop_count);
-    //         print_all_measurement_results(measurement_results_base, n_used_counters);
-    //         printf("Programmable counter results (unroll_count=%ld, loop_count=%ld):\n\n", main_unroll_count, main_loop_count);
-    //         print_all_measurement_results(measurement_results, n_used_counters);
-    //     }
-
-    //     for (size_t c=0; c < n_used_counters; c++) {
-    //         if (pfc_descriptions[c]) printf("%s", compute_result_str(buf, sizeof(buf), pfc_descriptions[c], c));
-    //     }
-    // }
-
-    #if defined(__riscv)
-
-    if (run_riscv_measurements(csv_file, cpu, usr, os, code_path, code_length, benchmark_name,
-                               measurement_name, aggregate_name, instructions_per_block,
-                               base_unroll_count, main_unroll_count, base_loop_count, main_loop_count) != 0) {
-        return 1;
-    }
-
-    #elif defined(__x86_64__) || defined(__i386__)
     size_t next_pfc_config = 0;
-    
+
     while (next_pfc_config < n_pfc_configs) {
         char *pfc_descriptions[MAX_PROGRAMMABLE_COUNTERS] = {0};
         next_pfc_config = configure_perf_ctrs_programmable(next_pfc_config, usr, os, n_used_counters, 0, pfc_descriptions);
@@ -891,12 +736,6 @@ int main(int argc, char **argv) {
     #else
     #error "Unsupported architecture"
     #endif
-
-    // #if defined(__riscv)
-    // if (test_counter_open) {
-    //     riscv_pmu_close(&test_counter);
-    // }
-    // #endif
 
     /*************************************
      * Cleanup
