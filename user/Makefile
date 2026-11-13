@@ -14,7 +14,10 @@ endif
 nanoBench: $(OBJS)
 	$(CC) $(LDFLAGS) -o $@ $(OBJS)
 
-nanoBench_main.o: nanoBench_main.c ../common/nanoBench.h
+# nanoBench_main.c includes riscv_pmu.h on RISC-V; a change of a struct in it
+# must rebuild nanoBench_main.o as well, otherwise the two objects disagree on
+# the struct layout.
+nanoBench_main.o: nanoBench_main.c ../common/nanoBench.h riscv_pmu.h
 	$(CC) $(CFLAGS) -c nanoBench_main.c -o $@
 
 nanoBench.o: ../common/nanoBench.c ../common/nanoBench.h
@@ -25,3 +28,5 @@ riscv_pmu.o: riscv_pmu.c riscv_pmu.h
 
 clean:
 	rm -f nanoBench $(OBJS)
+
+.PHONY: clean
