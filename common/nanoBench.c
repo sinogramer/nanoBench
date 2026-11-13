@@ -2171,6 +2171,57 @@ void initial_warm_up_template() {
 
 #elif defined(__riscv)
 
+/*
+ * Prologue/epilogue of the RISC-V templates.
+ *
+ * The generated code is called like a normal C function, so it must preserve
+ * every callee-saved register of the RISC-V psABI (s0-s11, sp) and must not
+ * lose ra. gp and tp are also restored because the benchmark code might
+ * overwrite them, and libc relies on both.
+ *
+ * After the prologue:  s11 = a0 (results), s10 = a1 (loop count), s9 = a2 (scratch)
+ * The benchmark code must not modify sp, s9, s10, s11.
+ */
+#define RISCV_TEMPLATE_PROLOGUE \
+        "addi sp, sp, -128\n"   \
+        "sd ra,    0(sp)\n"     \
+        "sd gp,    8(sp)\n"     \
+        "sd tp,   16(sp)\n"     \
+        "sd s0,   24(sp)\n"     \
+        "sd s1,   32(sp)\n"     \
+        "sd s2,   40(sp)\n"     \
+        "sd s3,   48(sp)\n"     \
+        "sd s4,   56(sp)\n"     \
+        "sd s5,   64(sp)\n"     \
+        "sd s6,   72(sp)\n"     \
+        "sd s7,   80(sp)\n"     \
+        "sd s8,   88(sp)\n"     \
+        "sd s9,   96(sp)\n"     \
+        "sd s10, 104(sp)\n"     \
+        "sd s11, 112(sp)\n"     \
+        "mv s11, a0\n"          \
+        "mv s10, a1\n"          \
+        "mv s9, a2\n"
+
+#define RISCV_TEMPLATE_EPILOGUE \
+        "ld ra,    0(sp)\n"     \
+        "ld gp,    8(sp)\n"     \
+        "ld tp,   16(sp)\n"     \
+        "ld s0,   24(sp)\n"     \
+        "ld s1,   32(sp)\n"     \
+        "ld s2,   40(sp)\n"     \
+        "ld s3,   48(sp)\n"     \
+        "ld s4,   56(sp)\n"     \
+        "ld s5,   64(sp)\n"     \
+        "ld s6,   72(sp)\n"     \
+        "ld s7,   80(sp)\n"     \
+        "ld s8,   88(sp)\n"     \
+        "ld s9,   96(sp)\n"     \
+        "ld s10, 104(sp)\n"     \
+        "ld s11, 112(sp)\n"     \
+        "addi sp, sp, 128\n"    \
+        "ret\n"
+
 __attribute__((naked, noinline))
 void measurement_template_RISCV(void)
 {
@@ -2234,13 +2285,7 @@ void measurement_template_RISCV_PMC(void)
         ".option push\n"
         ".option norvc\n"
 
-        "addi sp, sp, -32\n"
-        "sd s9, 0(sp)\n"
-        "sd s10, 8(sp)\n"
-        "sd s11, 16(sp)\n"
-        "mv s11, a0\n"
-        "mv s10, a1\n"
-        "mv s9, a2\n"
+        RISCV_TEMPLATE_PROLOGUE
 
         ".balign 8\n"
         ".quad " STRINGIFY(MAGIC_BYTES_INIT) "\n"
@@ -2271,12 +2316,8 @@ void measurement_template_RISCV_PMC(void)
 
         ".balign 8\n"
         ".quad " STRINGIFY(MAGIC_BYTES_TEMPLATE_END) "\n"
-        
-        "ld s9, 0(sp)\n"
-        "ld s10, 8(sp)\n"
-        "ld s11, 16(sp)\n"
-        "addi sp, sp, 32\n"
-        "ret\n"
+
+        RISCV_TEMPLATE_EPILOGUE
 
         ".option pop\n"
     );
@@ -2382,13 +2423,7 @@ void measurement_FF_template_RISCV(void)
         ".option push\n"
         ".option norvc\n"
 
-        "addi sp, sp, -32\n"
-        "sd s9, 0(sp)\n"
-        "sd s10, 8(sp)\n"
-        "sd s11, 16(sp)\n"
-        "mv s11, a0\n"
-        "mv s10, a1\n"
-        "mv s9, a2\n"
+        RISCV_TEMPLATE_PROLOGUE
 
 
         ".balign 8\n"
@@ -2427,11 +2462,7 @@ void measurement_FF_template_RISCV(void)
         ".balign 8\n"
         ".quad " STRINGIFY(MAGIC_BYTES_TEMPLATE_END) "\n"
 
-        "ld s9, 0(sp)\n"
-        "ld s10, 8(sp)\n"
-        "ld s11, 16(sp)\n"
-        "addi sp, sp, 32\n"
-        "ret\n"
+        RISCV_TEMPLATE_EPILOGUE
 
         ".option pop\n"
     );
