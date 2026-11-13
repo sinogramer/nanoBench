@@ -1,0 +1,13 @@
+name,mnemonic,direction,rs1_value,rs2_value,enabled
+beq_taken,beq,taken,5,5,1
+beq_not_taken,beq,not_taken,5,7,1
+bne_taken,bne,taken,5,7,1
+bne_not_taken,bne,not_taken,5,5,1
+blt_taken,blt,taken,5,7,1
+blt_not_taken,blt,not_taken,7,5,1
+bge_taken,bge,taken,7,5,1
+bge_not_taken,bge,not_taken,5,7,1
+bltu_taken,bltu,taken,5,7,1
+bltu_not_taken,bltu,not_taken,7,5,1
+bgeu_taken,bgeu,taken,7,5,1
+bgeu_not_taken,bgeu,not_taken,5,7,1

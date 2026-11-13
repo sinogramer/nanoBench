@@ -1,0 +1,5 @@
+name,mnemonic,width,operation,enabled
+amoadd_d,amoadd.d,8,add,1
+amoadd_d_aq,amoadd.d.aq,8,add,1
+amoadd_d_rl,amoadd.d.rl,8,add,1
+amoadd_d_aqrl,amoadd.d.aqrl,8,add,1

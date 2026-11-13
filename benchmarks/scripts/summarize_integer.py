@@ -40,12 +40,12 @@ def close_enough(a: float, b: float, relative_tolerance: float = 0.02) -> bool:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--latency", type=Path, required=True)
+    parser.add_argument("--latency", type=Path)
     parser.add_argument("--throughput", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
 
-    latency_rows = read_rows(args.latency)
+    latency_rows = read_rows(args.latency) if args.latency is not None else []
     throughput_rows = read_rows(args.throughput)
 
     latency_by_instruction: dict[str, float] = {}
@@ -100,16 +100,28 @@ def main() -> None:
         writer = csv.DictWriter(file, fieldnames=fieldnames)
         writer.writeheader()
 
-        for name in sorted(latency_by_instruction):
+        instruction_names = (set(latency_by_instruction) | set(throughput_by_instruction))
+
+        for name in sorted(instruction_names):
             samples = sorted(throughput_by_instruction.get(name, []))
 
             if not samples:
                 continue
 
-            valid_samples = [(chains, value) for chains, value in samples if chains >= 2]
+            retired_samples = dict(retired_by_instruction.get(name, []))
+            issued_samples = dict(issued_by_instruction.get(name, []))
+
+            valid_samples = [
+                (chains, value)
+                for chains, value in samples
+                if close_enough(retired_samples.get(chains, 0.0), 1.0)
+                and close_enough(issued_samples.get(chains, 0.0), 1.0)
+            ]
 
             if not valid_samples:
                 valid_samples = samples
+
+            latency = latency_by_instruction.get(name)
 
             reciprocal_throughput = min(value for _, value in valid_samples)
             max_throughput = 1.0 / reciprocal_throughput
@@ -130,7 +142,7 @@ def main() -> None:
 
             writer.writerow({
                 "instruction": name,
-                "latency": f"{latency_by_instruction[name]:.6f}",
+                "latency": "" if latency is None else f"{latency:.6f}",
                 "reciprocal_throughput": f"{reciprocal_throughput:.6f}",
                 "max_throughput": f"{max_throughput:.6f}",
                 "saturation_chains": saturation_chains,

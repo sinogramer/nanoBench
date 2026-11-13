@@ -1,0 +1,10 @@
+nanoBench_main.c: In function ‘main’:
+nanoBench_main.c:509:12: warning: unused variable ‘next_pfc_config’ [-Wunused-variable]
+  509 |     size_t next_pfc_config = 0;
+      |            ^~~~~~~~~~~~~~~
+nanoBench_main.c:71:10: warning: variable ‘os’ set but not used [-Wunused-but-set-variable]
+   71 |     bool os = 0;
+      |          ^~
+nanoBench_main.c:70:10: warning: variable ‘usr’ set but not used [-Wunused-but-set-variable]
+   70 |     bool usr = 1;
+      |          ^~~

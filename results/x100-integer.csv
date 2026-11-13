@@ -1,0 +1,22 @@
+architecture,core,cpu,code,code_size,event,selector,value,unroll_count,loop_count,aggregate
+riscv64,X100,0,dependent_mul.bin,4,Core cycles,fixed-cycle,3.000000,1000,0,median
+riscv64,X100,0,dependent_mul.bin,4,Instruction retired,fixed-instret,1.000000,1000,0,median
+riscv64,X100,0,dependent_mul.bin,4,Issued instructions,0x2d,1.000000,1000,0,median
+riscv64,X100,0,dependent_mul.bin,4,ALU instructions,0x34,1.000000,1000,0,median
+riscv64,X100,0,dependent_mul.bin,4,Memory instructions,0x35,0.000000,1000,0,median
+riscv64,X100,0,dependent_mul.bin,4,Vector instructions,0x36,0.000000,1000,0,median
+riscv64,X100,0,dependent_mul.bin,4,FP instructions,0x3f,0.000000,1000,0,median
+riscv64,X100,0,/tmp/nanobench-riscv.phaBPV/code.bin,4,Core cycles,fixed-cycle,1.000000,1000,0,median
+riscv64,X100,0,/tmp/nanobench-riscv.phaBPV/code.bin,4,Instruction retired,fixed-instret,1.000000,1000,0,median
+riscv64,X100,0,/tmp/nanobench-riscv.phaBPV/code.bin,4,Issued instructions,0x2d,1.000000,1000,0,median
+riscv64,X100,0,/tmp/nanobench-riscv.phaBPV/code.bin,4,ALU instructions,0x34,1.000000,1000,0,median
+riscv64,X100,0,/tmp/nanobench-riscv.phaBPV/code.bin,4,Memory instructions,0x35,0.000000,1000,0,median
+riscv64,X100,0,/tmp/nanobench-riscv.phaBPV/code.bin,4,Vector instructions,0x36,0.000000,1000,0,median
+riscv64,X100,0,/tmp/nanobench-riscv.phaBPV/code.bin,4,FP instructions,0x3f,0.000000,1000,0,median
+riscv64,X100,0,/tmp/nanobench-riscv.DO4bjf/code.bin,4,Core cycles,fixed-cycle,3.000000,1000,0,median
+riscv64,X100,0,/tmp/nanobench-riscv.DO4bjf/code.bin,4,Instruction retired,fixed-instret,1.000000,1000,0,median
+riscv64,X100,0,/tmp/nanobench-riscv.DO4bjf/code.bin,4,Issued instructions,0x2d,1.000000,1000,0,median
+riscv64,X100,0,/tmp/nanobench-riscv.DO4bjf/code.bin,4,ALU instructions,0x34,1.000000,1000,0,median
+riscv64,X100,0,/tmp/nanobench-riscv.DO4bjf/code.bin,4,Memory instructions,0x35,0.000000,1000,0,median
+riscv64,X100,0,/tmp/nanobench-riscv.DO4bjf/code.bin,4,Vector instructions,0x36,0.000000,1000,0,median
+riscv64,X100,0,/tmp/nanobench-riscv.DO4bjf/code.bin,4,FP instructions,0x3f,0.000000,1000,0,median

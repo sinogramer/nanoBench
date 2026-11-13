@@ -1,0 +1,5 @@
+name,mnemonic,extension,kind,width,precision,enabled
+flw,flw,F,load,4,s,1
+fld,fld,D,load,8,d,1
+fsw,fsw,F,store,4,s,1
+fsd,fsd,D,store,8,d,1

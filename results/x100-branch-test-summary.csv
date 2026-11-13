@@ -1,0 +1,3 @@
+benchmark,reciprocal_throughput,max_throughput,first_steady_state_count,retired_per_branch,issued_per_branch,alu_per_branch,throughput_samples
+beq_not_taken,1.000000,1.000000,1,1.000000,1.000000,0.000000,1:1.000000;2:1.000000;3:1.000000;4:1.000000;6:1.000000;8:1.000000
+beq_taken,1.991667,0.502092,3,1.000000,1.000000,0.000000,1:2.100000;2:2.100000;3:1.993333;4:1.992500;6:1.991667;8:1.988750

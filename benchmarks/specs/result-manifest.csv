@@ -1,0 +1,13 @@
+category,path
+integer,results/x100-integer-summary.csv
+integer_imm,results/x100-integer-operand-summary.csv
+bitmanip,results/x100-bitmanip-summary.csv
+division,results/x100-division-summary.csv
+memory,results/x100-memory-summary.csv
+branch,results/x100-branch-test-summary.csv
+atomic,results/x100-atomic-all-summary.csv
+scalar_fp,results/x100-fp-basic-summary.csv
+fp_memory,results/x100-fp-memory-summary.csv
+vector,results/x100-vector-basic-summary.csv
+vector_memory,results/x100-vector-memory-summary.csv
+vector_crypto,results/x100-vector-crypto-summary.csv

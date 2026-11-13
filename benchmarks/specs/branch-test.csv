@@ -1,0 +1,3 @@
+name,mnemonic,direction,rs1_value,rs2_value,enabled
+beq_taken,beq,taken,5,5,1
+beq_not_taken,beq,not_taken,5,7,1

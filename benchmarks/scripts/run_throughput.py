@@ -10,17 +10,93 @@ CHAIN_REGISTERS = ["t3", "t4", "t5", "t6", "a0", "a1", "a2", "a3"]
 CHAIN_COUNTS = [1, 2, 3, 4, 6, 8]
 COMMON_SOURCE = "t2"
 
+def march_for_extension(extension: str) -> str:
+    extension = extension.lower()
 
-def generate_throughput_asm(mnemonic: str, chain_count: int) -> str:
+    march_by_extension = {
+        "i": "rv64gc",
+        "m": "rv64gc",
+        "zba": "rv64gc_zba",
+        "zbb": "rv64gc_zbb",
+        "zbc": "rv64gc_zbc",
+        "zbs": "rv64gc_zbs",
+    }
+
+    try:
+        return march_by_extension[extension]
+    except KeyError as error:
+        raise ValueError(
+            f"unsupported ISA extension: {extension}"
+        ) from error
+
+def generate_throughput_asm(
+    row: dict[str, str],
+    chain_count: int,
+) -> str:
+    mnemonic = row["mnemonic"]
+    operand_form = row["operand_form"]
+    operand_value = row.get("operand_value", "")
     registers = CHAIN_REGISTERS[:chain_count]
-    return "; ".join(f"{mnemonic} {rd}, {rd}, {COMMON_SOURCE}" for rd in registers)
+
+    if operand_form == "rd-rs1-rs2":
+        return "; ".join(
+            f"{mnemonic} {rd}, {rd}, {COMMON_SOURCE}"
+            for rd in registers
+        )
+
+    if operand_form in {"rd-rs1-imm", "rd-rs1-shamt"}:
+        if operand_value == "":
+            raise ValueError(
+                f"{row['name']}: operand_value is required"
+            )
+
+        return "; ".join(
+            f"{mnemonic} {rd}, {rd}, {operand_value}"
+            for rd in registers
+        )
+
+    if operand_form == "rd-rs1":
+        return "; ".join(
+            f"{mnemonic} {rd}, {rd}"
+            for rd in registers
+        )
+
+    if operand_form == "rd-imm":
+        if operand_value == "":
+            raise ValueError(
+                f"{row['name']}: operand_value is required"
+            )
+
+        return "; ".join(
+            f"{mnemonic} {rd}, {operand_value}"
+            for rd in registers
+        )
+
+    raise ValueError(
+        f"{row['name']}: unsupported throughput operand form: "
+        f"{operand_form}"
+    )
 
 
-def generate_throughput_init(chain_count: int) -> str:
-    instructions = [f"li {COMMON_SOURCE}, 3"]
+def generate_throughput_init(
+    row: dict[str, str],
+    chain_count: int,
+) -> str:
+    operand_form = row["operand_form"]
+    instructions = []
 
-    for index, register in enumerate(CHAIN_REGISTERS[:chain_count], start=1):
-        instructions.append(f"li {register}, {index * 5}")
+    if operand_form == "rd-rs1-rs2":
+        instructions.append(f"li {COMMON_SOURCE}, 3")
+
+    if operand_form != "rd-imm":
+        for index, register in enumerate(
+            CHAIN_REGISTERS[:chain_count],
+            start=1,
+        ):
+            instructions.append(f"li {register}, {index * 5}")
+
+    if not instructions:
+        return "nop"
 
     return "; ".join(instructions)
 
@@ -44,12 +120,15 @@ def main() -> None:
             if row.get("enabled", "1") != "1":
                 continue
             for chain_count in CHAIN_COUNTS:
-                asm = generate_throughput_asm(row["mnemonic"], chain_count)
-                init = generate_throughput_init(chain_count)
+                march = march_for_extension(row["extension"])
+                asm = generate_throughput_asm(row, chain_count)
+                init = generate_throughput_init(row, chain_count)
 
                 command = [
                     "sudo",
                     str(wrapper),
+                    "-march",
+                    march,
                     "-asm",
                     asm,
                     "-asm_init",

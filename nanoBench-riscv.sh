@@ -6,6 +6,9 @@ ROOT=$(cd "$(dirname "$0")" && pwd)
 CC=${CC:-gcc}
 OBJCOPY=${OBJCOPY:-objcopy}
 
+MARCH=${MARCH:-rv64gc}
+MABI=${MABI:-lp64d}
+
 ASM=""
 ASM_INIT=""
 KEEP_TEMP=0
@@ -19,6 +22,14 @@ while (($# > 0)); do
             ;;
         -asm_init)
             ASM_INIT=$2
+            shift 2
+            ;;
+        -march)
+            MARCH=$2
+            shift 2
+            ;;
+        -mabi)
+            MABI=$2
             shift 2
             ;;
         -keep_temp)
@@ -68,12 +79,12 @@ write_asm()
 }
 
 write_asm "$TMPDIR/code.S" benchmark "$ASM"
-"$CC" -c -march=rv64gc -mabi=lp64d -o "$TMPDIR/code.o" "$TMPDIR/code.S"
+"$CC" -c -march="$MARCH" -mabi="$MABI" -o "$TMPDIR/code.o" "$TMPDIR/code.S"
 "$OBJCOPY" -O binary -j .text "$TMPDIR/code.o" "$TMPDIR/code.bin"
 
 if [[ -n "$ASM_INIT" ]]; then
     write_asm "$TMPDIR/init.S" benchmark_init "$ASM_INIT"
-    "$CC" -c -march=rv64gc -mabi=lp64d -o "$TMPDIR/init.o" "$TMPDIR/init.S"
+    "$CC" -c -march="$MARCH" -mabi="$MABI" -o "$TMPDIR/init.o" "$TMPDIR/init.S"
     "$OBJCOPY" -O binary -j .text "$TMPDIR/init.o" "$TMPDIR/init.bin"
     ARGS+=(-code_init "$TMPDIR/init.bin")
 fi

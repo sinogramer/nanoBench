@@ -1,0 +1,7 @@
+name,mnemonic,extension,sew,lmul,vl,egw,operand_form,profile,latency,throughput,enabled
+vaesem_vv,vaesem.vv,zvkned,32,m1,8,128,vd-vs2,aes_round,1,1,1
+vaesef_vv,vaesef.vv,zvkned,32,m1,8,128,vd-vs2,aes_round,1,1,1
+vaesdm_vv,vaesdm.vv,zvkned,32,m1,8,128,vd-vs2,aes_round,1,1,1
+vaesdf_vv,vaesdf.vv,zvkned,32,m1,8,128,vd-vs2,aes_round,1,1,1
+vgmul_vv,vgmul.vv,zvkg,32,m1,8,128,vd-vs2,gcm_multiply,1,1,1
+vghsh_vv,vghsh.vv,zvkg,32,m1,8,128,vd-vs2-vs1,ghash_update,1,1,1

@@ -1,0 +1,9 @@
+name,mnemonic,kind,eew,sew,lmul,vl,input_profile,throughput,enabled
+vle8_v_e8m1,vle8.v,load,8,8,m1,32,unit_stride_load,1,1
+vle16_v_e16m1,vle16.v,load,16,16,m1,16,unit_stride_load,1,1
+vle32_v_e32m1,vle32.v,load,32,32,m1,8,unit_stride_load,1,1
+vle64_v_e64m1,vle64.v,load,64,64,m1,4,unit_stride_load,1,1
+vse8_v_e8m1,vse8.v,store,8,8,m1,32,unit_stride_store,1,1
+vse16_v_e16m1,vse16.v,store,16,16,m1,16,unit_stride_store,1,1
+vse32_v_e32m1,vse32.v,store,32,32,m1,8,unit_stride_store,1,1
+vse64_v_e64m1,vse64.v,store,64,64,m1,4,unit_stride_store,1,1

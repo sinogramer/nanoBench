@@ -1,0 +1,5 @@
+name,mnemonic,extension,operand_form,operand_value,latency,throughput,min_summary_chains,enabled
+lui,lui,I,rd-imm,1,0,1,1,1
+auipc,auipc,I,rd-imm,1,0,1,1,1
+xor,xor,I,rd-rs1-rs2,,1,1,2,1
+add,add,I,rd-rs1-rs2,,1,1,2,1

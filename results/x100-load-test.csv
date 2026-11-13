@@ -1,0 +1,8 @@
+architecture,core,cpu,code,code_size,measurement,event,selector,value,instructions_per_block,value_per_instruction,unroll_count,loop_count,aggregate
+riscv64,X100,0,ld_dependency_chain,4,latency,Core cycles,fixed-cycle,3.000000,1,3.000000,64,16,median
+riscv64,X100,0,ld_dependency_chain,4,latency,Instructions retired,fixed-instret,1.000000,1,1.000000,64,16,median
+riscv64,X100,0,ld_dependency_chain,4,latency,Issued instructions,0x2d,1.000000,1,1.000000,64,16,median
+riscv64,X100,0,ld_dependency_chain,4,latency,ALU instructions,0x34,0.000000,1,0.000000,64,16,median
+riscv64,X100,0,ld_dependency_chain,4,latency,Memory instructions,0x35,1.000000,1,1.000000,64,16,median
+riscv64,X100,0,ld_dependency_chain,4,latency,Vector instructions,0x36,0.000000,1,0.000000,64,16,median
+riscv64,X100,0,ld_dependency_chain,4,latency,FP instructions,0x3f,0.000000,1,0.000000,64,16,median

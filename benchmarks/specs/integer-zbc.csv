@@ -1,0 +1,4 @@
+name,mnemonic,extension,operand_form,operand_value,latency,throughput,enabled
+clmul,clmul,Zbc,rd-rs1-rs2,,1,1,1
+clmulh,clmulh,Zbc,rd-rs1-rs2,,1,1,1
+clmulr,clmulr,Zbc,rd-rs1-rs2,,1,1,1

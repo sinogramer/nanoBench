@@ -1,0 +1,3 @@
+name,mnemonic,width,operation,enabled
+amoswap_d,amoswap.d,8,swap,1
+amoadd_d,amoadd.d,8,add,1

@@ -1,0 +1,9 @@
+name,mnemonic,extension,operand_form,operand_value,latency,throughput,enabled
+sh1add,sh1add,Zba,rd-rs1-rs2,,1,1,1
+sh2add,sh2add,Zba,rd-rs1-rs2,,1,1,1
+sh3add,sh3add,Zba,rd-rs1-rs2,,1,1,1
+add_uw,add.uw,Zba,rd-rs1-rs2,,1,1,1
+sh1add_uw,sh1add.uw,Zba,rd-rs1-rs2,,1,1,1
+sh2add_uw,sh2add.uw,Zba,rd-rs1-rs2,,1,1,1
+sh3add_uw,sh3add.uw,Zba,rd-rs1-rs2,,1,1,1
+slli_uw,slli.uw,Zba,rd-rs1-shamt,3,1,1,1

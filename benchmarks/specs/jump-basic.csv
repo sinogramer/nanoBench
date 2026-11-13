@@ -1,0 +1,4 @@
+name,kind,enabled
+jal_to_next,jal_to_next,1
+jal_skip_one,jal_skip_one,1
+jalr_to_next_pair,jalr_to_next_pair,1

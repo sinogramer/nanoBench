@@ -1,0 +1,4 @@
+name,mnemonic,extension,operand_form,operand_value,latency,throughput,enabled
+clz,clz,Zbb,rd-rs1,,1,1,1
+ctz,ctz,Zbb,rd-rs1,,1,1,1
+cpop,cpop,Zbb,rd-rs1,,1,1,1

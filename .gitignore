@@ -2,7 +2,9 @@
 *.cmd
 *.o
 *.o.ur-safe
+*.ko
 *.mod
+*.mod.c
 *.dwo
 *.pyc
 *.html
@@ -20,5 +22,11 @@ kernel/modules.order
 kernel/nb.ko
 kernel/nb.mod.c
 
+# generated / temporary
+benchmarks/generated/
+
 # User ignore files
 user/nanoBench
+
+__pycache__/
+temp_asm.S

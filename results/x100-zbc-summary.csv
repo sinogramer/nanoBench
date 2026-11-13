@@ -1,0 +1,4 @@
+instruction,latency,reciprocal_throughput,max_throughput,saturation_chains,retired_per_instruction,issued_per_instruction,alu_per_instruction
+clmul,2.000000,0.333333,3.000003,6,1.000000,1.000000,1.000000
+clmulh,2.000000,0.333333,3.000003,6,1.000000,1.000000,1.000000
+clmulr,2.000000,0.333333,3.000003,6,1.000000,1.000000,1.000000

@@ -1,0 +1,5 @@
+instruction,mnemonic,extension,kind,width,precision,stride,reciprocal_throughput,max_throughput,first_steady_state_count,retired_per_instruction,issued_event_per_instruction,memory_event_per_instruction,fp_event_per_instruction,alu_event_per_instruction,throughput_samples
+fld,fld,D,load,8,d,8,0.500000,2.000000,1,1.000000,1.000000,1.000000,0.000000,0.000000,1:0.500000;2:0.500000;3:0.500000;4:0.500000;6:0.500000;8:0.500000
+flw,flw,F,load,4,s,8,0.500000,2.000000,1,1.000000,1.000000,1.000000,0.000000,0.000000,1:0.500000;2:0.500000;3:0.500000;4:0.500000;6:0.500000;8:0.500000
+fsd,fsd,D,store,8,d,8,1.000000,1.000000,1,1.000000,3.000000,1.000000,0.000000,0.000000,1:1.000000;2:1.000000;3:1.000000;4:1.000000;6:1.000000;8:1.091250
+fsw,fsw,F,store,4,s,8,1.000000,1.000000,1,1.000000,3.000000,1.000000,0.000000,0.000000,1:1.000000;2:1.000000;3:1.000000;4:1.000000;6:1.000000;8:1.000000

@@ -1,0 +1,6 @@
+make -C user/
+make[1]: Entering directory '/home/sino/lab/nanoBench/user'
+gcc -Wall -c ../common/nanoBench.c -o nanoBench.o
+gcc -Wall   -c -o nanoBench_main.o nanoBench_main.c
+gcc   nanoBench.o nanoBench_main.o   -o nanoBench
+make[1]: Leaving directory '/home/sino/lab/nanoBench/user'

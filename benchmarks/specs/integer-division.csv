@@ -1,0 +1,9 @@
+name,mnemonic,operation,width,signed,numerator,denominator,remainder_restore,enabled
+div,div,div,64,1,1001,7,,1
+divu,divu,div,64,0,1001,7,,1
+rem,rem,rem,64,1,1000,7,994,1
+remu,remu,rem,64,0,1000,7,994,1
+divw,divw,div,32,1,1001,7,,1
+divuw,divuw,div,32,0,1001,7,,1
+remw,remw,rem,32,1,1000,7,994,1
+remuw,remuw,rem,32,0,1000,7,994,1

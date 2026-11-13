@@ -1,0 +1,9 @@
+name,mnemonic,extension,operand_form,operand_value,latency,throughput,enabled
+bclr,bclr,Zbs,rd-rs1-rs2,,1,1,1
+bext,bext,Zbs,rd-rs1-rs2,,1,1,1
+binv,binv,Zbs,rd-rs1-rs2,,1,1,1
+bset,bset,Zbs,rd-rs1-rs2,,1,1,1
+bclri,bclri,Zbs,rd-rs1-shamt,3,1,1,1
+bexti,bexti,Zbs,rd-rs1-shamt,3,1,1,1
+binvi,binvi,Zbs,rd-rs1-shamt,3,1,1,1
+bseti,bseti,Zbs,rd-rs1-shamt,3,1,1,1

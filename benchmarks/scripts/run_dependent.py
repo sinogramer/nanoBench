@@ -6,12 +6,67 @@ import shlex
 import subprocess
 from pathlib import Path
 
+def march_for_extension(extension: str) -> str:
+    extension = extension.lower()
 
-def generate_latency_asm(mnemonic: str) -> str:
-    return f"{mnemonic} t5, t4, t3; {mnemonic} t4, t5, t3"
+    march_by_extension = {
+        "i": "rv64gc",
+        "m": "rv64gc",
+        "zba": "rv64gc_zba",
+        "zbb": "rv64gc_zbb",
+        "zbc": "rv64gc_zbc",
+        "zbs": "rv64gc_zbs",
+    }
+
+    try:
+        return march_by_extension[extension]
+    except KeyError as error:
+        raise ValueError(
+            f"unsupported ISA extension: {extension}"
+        ) from error
+
+def generate_latency_asm(row: dict[str, str]) -> str:
+    mnemonic = row["mnemonic"]
+    operand_form = row["operand_form"]
+    operand_value = row.get("operand_value", "")
+
+    if operand_form == "rd-rs1-rs2":
+        return (
+            f"{mnemonic} t5, t4, t3; "
+            f"{mnemonic} t4, t5, t3"
+        )
+
+    if operand_form in {"rd-rs1-imm", "rd-rs1-shamt"}:
+        if operand_value == "":
+            raise ValueError(
+                f"{row['name']}: operand_value is required"
+            )
+
+        return (
+            f"{mnemonic} t5, t4, {operand_value}; "
+            f"{mnemonic} t4, t5, {operand_value}"
+        )
+    
+    if operand_form == "rd-rs1":
+        return (
+            f"{mnemonic} t5, t4; "
+            f"{mnemonic} t4, t5"
+        )
+
+    raise ValueError(
+        f"{row['name']}: unsupported latency operand form: "
+        f"{operand_form}"
+    )
 
 
-def generate_latency_init() -> str:
+def generate_latency_init(row: dict[str, str]) -> str:
+    if row["operand_form"] == "rd-rs1":
+        return (
+            "li t3, 3; "
+            "li t4, 0x123456789abcdef0; "
+            "li t5, 0x0fedcba987654321"
+        )
+
     return "li t3, 3; li t4, 5; li t5, 7"
 
 
@@ -33,15 +88,20 @@ def main() -> None:
         for row in csv.DictReader(file):
             if row.get("enabled", "1") != "1":
                 continue
+            
+            if row.get("latency", "1") != "1":
+                continue
 
             name = row["name"]
-            mnemonic = row["mnemonic"]
-            asm = generate_latency_asm(mnemonic)
-            init = generate_latency_init()
+            march = march_for_extension(row["extension"])
+            asm = generate_latency_asm(row)
+            init = generate_latency_init(row)
 
             command = [
                 "sudo",
                 str(wrapper),
+                "-march",
+                march,
                 "-asm",
                 asm,
                 "-asm_init",
