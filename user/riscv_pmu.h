@@ -44,4 +44,4 @@ int riscv_pmu_group_open(struct riscv_pmu_group *group, const struct riscv_pmu_e
                          int cpu, bool usr, bool os);
 void riscv_pmu_group_close(struct riscv_pmu_group *group);
 
-#endif
+#endif
