@@ -2312,6 +2312,7 @@ void measurement_template_RISCV_PMC(void)
     __asm__ volatile(
         ".option push\n"
         ".option norvc\n"
+        ".option norelax\n"   /* fixed .balign padding; the template is copied byte by byte */
 
         RISCV_TEMPLATE_PROLOGUE
 
@@ -2348,6 +2349,7 @@ void one_time_init_template(void)
     __asm__ volatile(
         ".option push\n"
         ".option norvc\n"
+        ".option norelax\n"   /* fixed .balign padding; the template is copied byte by byte */
 
         RISCV_TEMPLATE_PROLOGUE
 
@@ -2369,6 +2371,7 @@ void initial_warm_up_template(void)
     __asm__ volatile(
         ".option push\n"
         ".option norvc\n"
+        ".option norelax\n"   /* fixed .balign padding; the template is copied byte by byte */
 
         RISCV_TEMPLATE_PROLOGUE
 
