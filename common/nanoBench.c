@@ -74,6 +74,9 @@ unsigned int riscv_n_counters = 0;
 unsigned int riscv_counter_csr[MAX_PROGRAMMABLE_COUNTERS];
 uint64_t riscv_counter_mask[MAX_PROGRAMMABLE_COUNTERS];
 int64_t riscv_counter_mem[2*MAX_PROGRAMMABLE_COUNTERS];
+void (*riscv_pre_run_hook)(void) = NULL;
+int (*riscv_post_run_hook)(void) = NULL;
+long riscv_n_retried_runs = 0;
 #endif
 
 int64_t* measurement_results[MAX_PROGRAMMABLE_COUNTERS];
@@ -1327,7 +1330,24 @@ void run_experiment(char* measurement_template, int64_t* results[], int n_counte
         typedef void (*runtime_function_t)(int64_t *results, uint64_t repetitions, void *scratch_memory);
 
         const uint64_t repetitions = local_loop_count == 0 ? 1 : (uint64_t)local_loop_count;
-        ((runtime_function_t)runtime_code)(riscv_counter_mem, repetitions, runtime_r14);
+
+        for (int attempt = 0; ; attempt++) {
+            if (riscv_pre_run_hook) riscv_pre_run_hook();
+
+            ((runtime_function_t)runtime_code)(riscv_counter_mem, repetitions, runtime_r14);
+
+            const int status = riscv_post_run_hook ? riscv_post_run_hook() : 0;
+            if (status == 0) break;
+            if (status == 2) {
+                print_error("RISC-V counter assignment changed during the measurement; results are invalid");
+                break;
+            }
+            riscv_n_retried_runs++;
+            if (attempt >= 100) {
+                print_error("RISC-V counters were reprogrammed in 100 consecutive runs; using the last run");
+                break;
+            }
+        }
 
         for (int c=0; c<n_counters; c++) {
             // hpmcounters can be narrower than 64 bits -> mask the difference

@@ -246,3 +246,29 @@ void riscv_pmu_group_close(struct riscv_pmu_group *group)
 
     group->n = 0;
 }
+
+void riscv_pmu_group_snapshot(struct riscv_pmu_group *group)
+{
+    for (int i = 0; i < group->n; ++i) {
+        group->lock_snapshot[i] = __atomic_load_n(&group->ctr[i].page->lock, __ATOMIC_ACQUIRE);
+    }
+}
+
+int riscv_pmu_group_check(const struct riscv_pmu_group *group)
+{
+    int status = RISCV_PMU_UNCHANGED;
+
+    for (int i = 0; i < group->n; ++i) {
+        const struct riscv_pmu_counter *counter = &group->ctr[i];
+
+        if (__atomic_load_n(&counter->page->index, __ATOMIC_RELAXED) != counter->perf_index) {
+            return RISCV_PMU_INDEX_CHANGED;
+        }
+
+        if (__atomic_load_n(&counter->page->lock, __ATOMIC_ACQUIRE) != group->lock_snapshot[i]) {
+            status = RISCV_PMU_REPROGRAMMED;
+        }
+    }
+
+    return status;
+}

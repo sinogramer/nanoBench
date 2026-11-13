@@ -32,6 +32,7 @@ struct riscv_pmu_event {
 struct riscv_pmu_group {
     int n;
     struct riscv_pmu_counter ctr[RISCV_PMU_MAX_EVENTS];
+    uint32_t lock_snapshot[RISCV_PMU_MAX_EVENTS];   /* page->lock before a run */
 };
 
 enum {
@@ -43,5 +44,20 @@ enum {
 int riscv_pmu_group_open(struct riscv_pmu_group *group, const struct riscv_pmu_event *events, int n,
                          int cpu, bool usr, bool os);
 void riscv_pmu_group_close(struct riscv_pmu_group *group);
+
+/*
+ * The kernel increments page->lock whenever it updates the user page, i.e.
+ * whenever it (re)programs the counter (e.g. after a context switch). If the
+ * lock changed during a run, the raw CSR values of that run are not
+ * comparable and the run has to be repeated.
+ */
+enum {
+    RISCV_PMU_UNCHANGED = 0,        /* run is valid */
+    RISCV_PMU_REPROGRAMMED = 1,     /* counters were reprogrammed: repeat the run */
+    RISCV_PMU_INDEX_CHANGED = 2,    /* an event moved to another hpmcounter: generated code is stale */
+};
+
+void riscv_pmu_group_snapshot(struct riscv_pmu_group *group);
+int riscv_pmu_group_check(const struct riscv_pmu_group *group);
 
 #endif

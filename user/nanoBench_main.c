@@ -161,6 +161,19 @@ static bool write_csv_result(FILE *file, const char *core, int cpu,
 
 #if defined(__riscv)
 
+/* group that is currently measured; used by the seqlock hooks of run_experiment() */
+static struct riscv_pmu_group *riscv_active_group;
+
+static void riscv_pre_run(void)
+{
+    riscv_pmu_group_snapshot(riscv_active_group);
+}
+
+static int riscv_post_run(void)
+{
+    return riscv_pmu_group_check(riscv_active_group);
+}
+
 static bool riscv_report(FILE *csv_file, int cpu, const char *code_path, size_t code_length,
                          const char *benchmark_name, const char *measurement_name, const char *aggregate_name,
                          long instructions_per_block, int index, char *description, const char *selector)
@@ -202,6 +215,7 @@ static int run_riscv_measurements(FILE *csv_file, int cpu, bool usr, bool os,
 
     bool fixed_done = !use_fixed_counters;
     size_t next = 0;
+    riscv_n_retried_runs = 0;
 
     while (next < n_pfc_configs || !fixed_done) {
         size_t remaining = n_pfc_configs - next;
@@ -256,9 +270,17 @@ static int run_riscv_measurements(FILE *csv_file, int cpu, bool usr, bool os,
             }
         }
 
+        riscv_active_group = &group;
+        riscv_pre_run_hook = riscv_pre_run;
+        riscv_post_run_hook = riscv_post_run;
+
         char *template = (char *)&measurement_template_RISCV_PMC;
         run_experiment(template, measurement_results_base, group.n, base_unroll_count, base_loop_count);
         run_experiment(template, measurement_results, group.n, main_unroll_count, main_loop_count);
+
+        riscv_pre_run_hook = NULL;
+        riscv_post_run_hook = NULL;
+        riscv_active_group = NULL;
 
         if (verbose) {
             printf("\nRISC-V counter results (unroll_count=%ld, loop_count=%ld):\n\n", base_unroll_count, base_loop_count);
@@ -291,6 +313,11 @@ static int run_riscv_measurements(FILE *csv_file, int cpu, bool usr, bool os,
 
         if (!ok) return 1;
         next += (size_t)batch;
+    }
+
+    if (riscv_n_retried_runs > 0) {
+        fprintf(stderr, "Note: %ld run(s) were repeated because the kernel reprogrammed the counters\n",
+                riscv_n_retried_runs);
     }
 
     return 0;

@@ -248,6 +248,13 @@ extern unsigned int riscv_counter_csr[MAX_PROGRAMMABLE_COUNTERS];
 extern uint64_t riscv_counter_mask[MAX_PROGRAMMABLE_COUNTERS];   // (1 << counter width) - 1
 // [0, MAX): values before the code, [MAX, 2*MAX): values after the code
 extern int64_t riscv_counter_mem[2*MAX_PROGRAMMABLE_COUNTERS];
+
+// Optional hooks called by run_experiment() around every run.
+// post hook returns 0 = run is valid, 1 = repeat the run, 2 = fatal (stop retrying).
+// They are set by the user-space driver (seqlock check of the perf user pages).
+extern void (*riscv_pre_run_hook)(void);
+extern int (*riscv_post_run_hook)(void);
+extern long riscv_n_retried_runs;
 #endif
 
 extern int64_t* measurement_results[MAX_PROGRAMMABLE_COUNTERS];
