@@ -158,3 +158,91 @@ void riscv_pmu_close(struct riscv_pmu_counter *counter)
         counter->fd = -1;
     }
 }
+int riscv_pmu_group_open(struct riscv_pmu_group *group, const struct riscv_pmu_event *events, int n,
+                         int cpu, bool usr, bool os)
+{
+    memset(group, 0, sizeof(*group));
+
+    if (n < 1 || n > RISCV_PMU_MAX_EVENTS) {
+        fprintf(stderr, "riscv_pmu_group_open: invalid number of events: %d\n", n);
+        return RISCV_PMU_OPEN_FAILED;
+    }
+
+    const long page_size = sysconf(_SC_PAGESIZE);
+
+    for (int i = 0; i < n; ++i) {
+        struct riscv_pmu_counter *counter = &group->ctr[i];
+        struct perf_event_attr attr;
+
+        memset(&attr, 0, sizeof(attr));
+        attr.type = events[i].type;
+        attr.size = sizeof(attr);
+        attr.config = events[i].config;
+        attr.disabled = (i == 0);   /* the leader enables/disables the whole group */
+        attr.pinned = (i == 0);     /* never multiplex: all events or none */
+        attr.exclude_user = !usr;
+        attr.exclude_kernel = !os;
+        attr.exclude_hv = 1;
+        attr.read_format = PERF_FORMAT_TOTAL_TIME_ENABLED | PERF_FORMAT_TOTAL_TIME_RUNNING;
+
+        counter->selector = events[i].config;
+        counter->fd = perf_event_open(&attr, 0, cpu, i == 0 ? -1 : group->ctr[0].fd, 0);
+        group->n = i + 1;
+
+        if (counter->fd < 0) {
+            fprintf(stderr, "perf_event_open(type=%u, config=0x%llx): %s\n", events[i].type,
+                    (unsigned long long)events[i].config, strerror(errno));
+            riscv_pmu_group_close(group);
+            return RISCV_PMU_OPEN_FAILED;
+        }
+
+        counter->page = mmap(NULL, page_size, PROT_READ, MAP_SHARED, counter->fd, 0);
+
+        if (counter->page == MAP_FAILED) {
+            fprintf(stderr, "mmap PMU metadata: %s\n", strerror(errno));
+            counter->page = NULL;
+            riscv_pmu_group_close(group);
+            return RISCV_PMU_OPEN_FAILED;
+        }
+    }
+
+    if (ioctl(group->ctr[0].fd, PERF_EVENT_IOC_RESET, PERF_IOC_FLAG_GROUP) != 0 ||
+        ioctl(group->ctr[0].fd, PERF_EVENT_IOC_ENABLE, PERF_IOC_FLAG_GROUP) != 0) {
+        fprintf(stderr, "PERF_EVENT_IOC_ENABLE (group): %s\n", strerror(errno));
+        riscv_pmu_group_close(group);
+        return RISCV_PMU_OPEN_FAILED;
+    }
+
+    /* the kernel assigns counters only when the task runs */
+    run_assignment_workload();
+
+    /* a pinned group that does not fit is put into an error state: read() returns 0 bytes */
+    uint64_t times[3] = {0, 0, 0};
+    if (read(group->ctr[0].fd, times, sizeof(times)) != (ssize_t)sizeof(times) || times[2] == 0) {
+        riscv_pmu_group_close(group);
+        return RISCV_PMU_NOT_SCHEDULED;
+    }
+
+    for (int i = 0; i < n; ++i) {
+        if (!read_counter_metadata(&group->ctr[i])) {
+            riscv_pmu_group_close(group);
+            return RISCV_PMU_NOT_SCHEDULED;
+        }
+    }
+
+    return RISCV_PMU_OK;
+}
+
+void riscv_pmu_group_close(struct riscv_pmu_group *group)
+{
+    /* disable the whole group via the leader, then close siblings before the leader */
+    if (group->n > 0 && group->ctr[0].fd >= 0) {
+        ioctl(group->ctr[0].fd, PERF_EVENT_IOC_DISABLE, PERF_IOC_FLAG_GROUP);
+    }
+
+    for (int i = group->n - 1; i >= 0; --i) {
+        riscv_pmu_close(&group->ctr[i]);
+    }
+
+    group->n = 0;
+}

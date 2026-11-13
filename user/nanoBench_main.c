@@ -159,6 +159,145 @@ static bool write_csv_result(FILE *file, const char *core, int cpu,
     return true;
 }
 
+#if defined(__riscv)
+
+static bool riscv_report(FILE *csv_file, int cpu, const char *code_path, size_t code_length,
+                         const char *benchmark_name, const char *measurement_name, const char *aggregate_name,
+                         long instructions_per_block, int index, char *description, const char *selector)
+{
+    char buf[200];
+
+    printf("%s", compute_result_str(buf, sizeof(buf), description, index));
+    fflush(stdout);
+
+    return write_csv_result(csv_file, "X100", cpu, code_path, code_length, benchmark_name, measurement_name,
+                            description, selector, compute_result_value((size_t)index), instructions_per_block,
+                            unroll_count, loop_count, aggregate_name);
+}
+
+/*
+ * Measures cycles, instret and all raw events of the config file.
+ *
+ * Each run reads {cycles, instructions, raw_1, ..., raw_k} at the same time:
+ * the events are opened as one perf group and the generated code reads all of
+ * them with csrr. k is at most n_programmable_counters. If the kernel cannot
+ * schedule a group, the raw events are split in halves; a single raw event
+ * that does not fit together with cycles/instructions is measured alone.
+ */
+static int run_riscv_measurements(FILE *csv_file, int cpu, bool usr, bool os,
+                                  const char *code_path, size_t code_length, const char *benchmark_name,
+                                  const char *measurement_name, const char *aggregate_name,
+                                  long instructions_per_block,
+                                  long base_unroll_count, long main_unroll_count,
+                                  long base_loop_count, long main_loop_count)
+{
+    const struct riscv_pmu_event fixed[2] = {
+        {PERF_TYPE_HARDWARE, PERF_COUNT_HW_CPU_CYCLES},
+        {PERF_TYPE_HARDWARE, PERF_COUNT_HW_INSTRUCTIONS},
+    };
+
+    int max_raw = n_programmable_counters;
+    if (max_raw > MAX_PROGRAMMABLE_COUNTERS - 2) max_raw = MAX_PROGRAMMABLE_COUNTERS - 2;
+    if (max_raw < 1) max_raw = 1;
+
+    bool fixed_done = !use_fixed_counters;
+    size_t next = 0;
+
+    while (next < n_pfc_configs || !fixed_done) {
+        size_t remaining = n_pfc_configs - next;
+        int batch = remaining < (size_t)max_raw ? (int)remaining : max_raw;
+        bool with_fixed = true;
+        struct riscv_pmu_group group;
+        int rc;
+
+        /* open {cycles, instructions, raw[next .. next+batch)}; shrink until it fits */
+        for (;;) {
+            struct riscv_pmu_event events[RISCV_PMU_MAX_EVENTS];
+            int n = 0;
+
+            if (with_fixed) {
+                events[n++] = fixed[0];
+                events[n++] = fixed[1];
+            }
+            for (int j = 0; j < batch; ++j) {
+                events[n++] = (struct riscv_pmu_event){PERF_TYPE_RAW, pfc_configs[next + (size_t)j].raw_selector};
+            }
+
+            rc = riscv_pmu_group_open(&group, events, n, cpu, usr, os);
+
+            if (rc != RISCV_PMU_NOT_SCHEDULED) break;
+            if (batch > 1) { batch = (batch + 1) / 2; continue; }
+            if (batch == 1 && with_fixed) { with_fixed = false; continue; }
+            break;
+        }
+
+        if (rc != RISCV_PMU_OK) {
+            if (batch == 0) {
+                print_error("Could not schedule the cycles/instructions events");
+                return 1;
+            }
+            print_error("Raw event 0x%llx could not be measured; skipped",
+                        (unsigned long long)pfc_configs[next].raw_selector);
+            next++;
+            continue;
+        }
+
+        /* tell the code generator which CSRs to read */
+        riscv_n_counters = (unsigned int)group.n;
+        for (int i = 0; i < group.n; ++i) {
+            const uint16_t width = group.ctr[i].width;
+            riscv_counter_csr[i] = 0xC00U + group.ctr[i].hardware_index;
+            riscv_counter_mask[i] = (width == 0 || width >= 64) ? ~0ULL : ((1ULL << width) - 1);
+
+            if (verbose) {
+                fprintf(stderr, "  event %d: config=0x%llx -> hpmcounter%u (CSR 0x%x, width %u)\n", i,
+                        (unsigned long long)group.ctr[i].selector, group.ctr[i].hardware_index,
+                        riscv_counter_csr[i], width);
+            }
+        }
+
+        char *template = (char *)&measurement_template_RISCV_PMC;
+        run_experiment(template, measurement_results_base, group.n, base_unroll_count, base_loop_count);
+        run_experiment(template, measurement_results, group.n, main_unroll_count, main_loop_count);
+
+        if (verbose) {
+            printf("\nRISC-V counter results (unroll_count=%ld, loop_count=%ld):\n\n", base_unroll_count, base_loop_count);
+            print_all_measurement_results(measurement_results_base, group.n);
+            printf("RISC-V counter results (unroll_count=%ld, loop_count=%ld):\n\n", main_unroll_count, main_loop_count);
+            print_all_measurement_results(measurement_results, group.n);
+        }
+
+        bool ok = true;
+
+        if (with_fixed && !fixed_done) {
+            ok = riscv_report(csv_file, cpu, code_path, code_length, benchmark_name, measurement_name,
+                              aggregate_name, instructions_per_block, 0, "Core cycles", "fixed-cycle") &&
+                 riscv_report(csv_file, cpu, code_path, code_length, benchmark_name, measurement_name,
+                              aggregate_name, instructions_per_block, 1, "Instructions retired", "fixed-instret");
+            fixed_done = true;
+        }
+
+        const int first_raw = with_fixed ? 2 : 0;
+        for (int j = 0; ok && j < batch; ++j) {
+            struct pfc_config *config = &pfc_configs[next + (size_t)j];
+            char selector[32];
+            snprintf(selector, sizeof(selector), "0x%llx", (unsigned long long)config->raw_selector);
+
+            ok = riscv_report(csv_file, cpu, code_path, code_length, benchmark_name, measurement_name,
+                              aggregate_name, instructions_per_block, first_raw + j, config->description, selector);
+        }
+
+        riscv_pmu_group_close(&group);
+
+        if (!ok) return 1;
+        next += (size_t)batch;
+    }
+
+    return 0;
+}
+
+#endif
+
 int main(int argc, char **argv) {
     /*************************************
      * Parse command-line options
@@ -365,9 +504,6 @@ int main(int argc, char **argv) {
 
     #if defined(__riscv)
 
-    struct riscv_pmu_counter test_counter;
-    bool test_counter_open = false;
-
     // if (!riscv_pmu_open_raw(&test_counter, 0x34, cpu, usr, os)) {
     //     print_error("Could not open X100 alu_inst event");
     //     return 1;
@@ -520,45 +656,7 @@ int main(int argc, char **argv) {
 
     if (use_fixed_counters) {
     #if defined(__riscv)
-                
-        // cycle (0xC00) and instret (0xC02) are read like any other counter
-        riscv_n_counters = 2;
-        riscv_counter_csr[0] = 0xC00U;
-        riscv_counter_csr[1] = 0xC02U;
-        riscv_counter_mask[0] = ~0ULL;
-        riscv_counter_mask[1] = ~0ULL;
-
-        measurement_template = (char *)&measurement_template_RISCV_PMC;
-
-        run_experiment(measurement_template, measurement_results_base, 2, base_unroll_count, base_loop_count);
-
-        run_experiment(measurement_template, measurement_results, 2, main_unroll_count, main_loop_count);
-
-        if (verbose) {
-            printf("\nRISC-V fixed-counter results "
-                "(unroll_count=%ld, loop_count=%ld):\n\n", base_unroll_count, base_loop_count);
-            print_all_measurement_results(measurement_results_base, 2);
-
-            printf("RISC-V fixed-counter results "
-                "(unroll_count=%ld, loop_count=%ld):\n\n", main_unroll_count, main_loop_count);
-            print_all_measurement_results(measurement_results, 2);
-        }
-
-        const double cycle_value = compute_result_value(0);
-        const double instret_value = compute_result_value(1);
-
-        printf("%s", compute_result_str(buf, sizeof(buf), "Core cycles", 0));
-        printf("%s", compute_result_str(buf, sizeof(buf), "Instructions retired", 1));
-
-        if (!write_csv_result(csv_file, "X100", cpu, code_path, code_length, benchmark_name, measurement_name,
-            "Core cycles", "fixed-cycle", cycle_value, instructions_per_block, unroll_count, loop_count, aggregate_name)) {
-            return 1;
-        }
-
-        if (!write_csv_result(csv_file, "X100", cpu, code_path, code_length, benchmark_name, measurement_name,
-            "Instructions retired", "fixed-instret", instret_value, instructions_per_block, unroll_count, loop_count, aggregate_name)) {
-            return 1;
-        }
+        // RISC-V: cycles/instret are read together with the raw events (run_riscv_measurements)
 
     #elif defined(__x86_64__) || defined(__i386__)
         if (is_AMD_CPU) {
@@ -713,73 +811,10 @@ int main(int argc, char **argv) {
 
     #if defined(__riscv)
 
-    // for (size_t config_index = 0; config_index < n_pfc_configs; ++config_index) {
-    //     struct pfc_config *config = &pfc_configs[config_index];
-    //     struct riscv_pmu_counter counter;
-
-    //     if (!riscv_pmu_open_raw(&counter, config->raw_selector, cpu, usr, os)) {
-    //         print_error("Could not open raw event 0x%llx", (unsigned long long)config->raw_selector);
-    //         return 1;
-    //     }
-
-    //     riscv_pmc_csr_number = 0xC00U + counter.hardware_index;
-
-    //     if (verbose) {
-    //         printf("raw selector       : 0x%llx\n", (unsigned long long)config->raw_selector);
-    //         printf("hardware index     : %u\n", counter.hardware_index);
-    //         printf("CSR number         : 0x%x\n", riscv_pmc_csr_number);
-    //     }
-
-    //     char *pmc_template = (char *)&measurement_template_RISCV_PMC;
-
-    //     run_experiment(pmc_template, measurement_results_base, 1, base_unroll_count, base_loop_count);
-
-    //     run_experiment(pmc_template, measurement_results, 1, main_unroll_count, main_loop_count);
-
-    //     printf("%s", compute_result_str(buf, sizeof(buf), config->description, 0));
-
-    //     riscv_pmu_close(&counter);
-    // }
-
-    for (size_t config_index = 0; config_index < n_pfc_configs; ++config_index) {
-        struct pfc_config *config = &pfc_configs[config_index];
-        struct riscv_pmu_counter counter;
-
-        fprintf(stderr, "Opening event %zu: selector=0x%llx description=\"%s\"\n", config_index, (unsigned long long)config->raw_selector, config->description);
-
-        if (!riscv_pmu_open_raw(&counter, config->raw_selector, cpu, usr, os)) {
-            print_error("Could not open raw event 0x%llx", (unsigned long long)config->raw_selector);
-            return 1;
-        }
-
-        riscv_n_counters = 1;
-        riscv_counter_csr[0] = 0xC00U + counter.hardware_index;
-        riscv_counter_mask[0] = counter.width >= 64 ? ~0ULL : ((1ULL << counter.width) - 1);
-
-        fprintf(stderr, "  perf index=%u hardware index=%u CSR=0x%x width=%u\n", counter.perf_index, counter.hardware_index, riscv_counter_csr[0], counter.width);
-
-        char *pmc_template = (char *)&measurement_template_RISCV_PMC;
-
-        run_experiment(pmc_template, measurement_results_base, 1, base_unroll_count, base_loop_count);
-
-        run_experiment(pmc_template, measurement_results, 1, main_unroll_count, main_loop_count);
-
-        const double value = compute_result_value(0);
-        char selector_string[32];
-
-        snprintf(selector_string, sizeof(selector_string), "0x%llx", (unsigned long long)config->raw_selector);
-
-        printf("%s", compute_result_str(buf, sizeof(buf), config->description, 0));
-        fflush(stdout);
-
-        if (!write_csv_result(csv_file, "X100", cpu, code_path, code_length, benchmark_name, measurement_name,
-                            config->description, selector_string, value, instructions_per_block,
-                            unroll_count, loop_count, aggregate_name)) {
-            riscv_pmu_close(&counter);
-            return 1;
-        }
-
-        riscv_pmu_close(&counter);
+    if (run_riscv_measurements(csv_file, cpu, usr, os, code_path, code_length, benchmark_name,
+                               measurement_name, aggregate_name, instructions_per_block,
+                               base_unroll_count, main_unroll_count, base_loop_count, main_loop_count) != 0) {
+        return 1;
     }
 
     #elif defined(__x86_64__) || defined(__i386__)
