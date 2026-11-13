@@ -521,7 +521,14 @@ int main(int argc, char **argv) {
     if (use_fixed_counters) {
     #if defined(__riscv)
                 
-        measurement_template = (char *)&measurement_FF_template_RISCV;
+        // cycle (0xC00) and instret (0xC02) are read like any other counter
+        riscv_n_counters = 2;
+        riscv_counter_csr[0] = 0xC00U;
+        riscv_counter_csr[1] = 0xC02U;
+        riscv_counter_mask[0] = ~0ULL;
+        riscv_counter_mask[1] = ~0ULL;
+
+        measurement_template = (char *)&measurement_template_RISCV_PMC;
 
         run_experiment(measurement_template, measurement_results_base, 2, base_unroll_count, base_loop_count);
 
@@ -745,9 +752,11 @@ int main(int argc, char **argv) {
             return 1;
         }
 
-        riscv_pmc_csr_number = 0xC00U + counter.hardware_index;
+        riscv_n_counters = 1;
+        riscv_counter_csr[0] = 0xC00U + counter.hardware_index;
+        riscv_counter_mask[0] = counter.width >= 64 ? ~0ULL : ((1ULL << counter.width) - 1);
 
-        fprintf(stderr, "  perf index=%u hardware index=%u CSR=0x%x width=%u\n", counter.perf_index, counter.hardware_index, riscv_pmc_csr_number, counter.width);
+        fprintf(stderr, "  perf index=%u hardware index=%u CSR=0x%x width=%u\n", counter.perf_index, counter.hardware_index, riscv_counter_csr[0], counter.width);
 
         char *pmc_template = (char *)&measurement_template_RISCV_PMC;
 

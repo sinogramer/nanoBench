@@ -70,7 +70,10 @@ int64_t pfc_mem[MAX_PROGRAMMABLE_COUNTERS];
 void* RSP_mem;
 
 #if defined(__riscv)
-unsigned int riscv_pmc_csr_number;
+unsigned int riscv_n_counters = 0;
+unsigned int riscv_counter_csr[MAX_PROGRAMMABLE_COUNTERS];
+uint64_t riscv_counter_mask[MAX_PROGRAMMABLE_COUNTERS];
+int64_t riscv_counter_mem[2*MAX_PROGRAMMABLE_COUNTERS];
 #endif
 
 int64_t* measurement_results[MAX_PROGRAMMABLE_COUNTERS];
@@ -785,6 +788,51 @@ uint32_t encode_csrr(unsigned int rd, unsigned int csr)
     return ((csr & 0xfffU) << 20) | (2U << 12) | ((rd & 0x1fU) << 7) | 0x73U;
 }
 
+static uint32_t encode_sd(unsigned int rs2, unsigned int rs1, int offset)
+{
+    // S-type: imm[11:5] rs2 rs1 funct3=011 imm[4:0] opcode=0100011
+    const uint32_t imm = (uint32_t)offset & 0xfffU;
+    return ((imm >> 5) << 25) | ((rs2 & 0x1fU) << 20) | ((rs1 & 0x1fU) << 15) | (3U << 12) |
+           ((imm & 0x1fU) << 7) | 0x23U;
+}
+
+/*
+ * Registers that receive the counter values. At the CSR_START/CSR_END points
+ * of measurement_template_RISCV_PMC all of them are free: a0-a2 have been
+ * copied to s9-s11, and s0-s8 are saved by RISCV_TEMPLATE_PROLOGUE.
+ * t0-t6 (7) + a0-a7 (8) + s0-s8 (9) = 24 = MAX_PROGRAMMABLE_COUNTERS
+ */
+static const unsigned int riscv_counter_regs[] = {
+    5, 6, 7, 28, 29, 30, 31,                /* t0-t6 */
+    10, 11, 12, 13, 14, 15, 16, 17,         /* a0-a7 */
+    8, 9, 18, 19, 20, 21, 22, 23, 24,       /* s0-s8 */
+};
+
+/*
+ * Emits "csrr r_i, csr_i" for all counters, followed by "sd r_i, 8*(slot+i)(s11)".
+ * All CSRs are read back-to-back first so that the counters are sampled as
+ * close together as possible; the stores come afterwards.
+ */
+static size_t emit_riscv_counter_reads(char *buffer, size_t offset, int first_slot)
+{
+    _Static_assert(sizeof(riscv_counter_regs) / sizeof(riscv_counter_regs[0]) >= MAX_PROGRAMMABLE_COUNTERS,
+                   "not enough registers for counter reads");
+
+    for (unsigned int i = 0; i < riscv_n_counters; i++) {
+        const uint32_t instruction = encode_csrr(riscv_counter_regs[i], riscv_counter_csr[i]);
+        memcpy(&buffer[offset], &instruction, sizeof(instruction));
+        offset += sizeof(instruction);
+    }
+
+    for (unsigned int i = 0; i < riscv_n_counters; i++) {
+        const uint32_t instruction = encode_sd(riscv_counter_regs[i], 27 /* s11 */, 8 * (first_slot + (int)i));
+        memcpy(&buffer[offset], &instruction, sizeof(instruction));
+        offset += sizeof(instruction);
+    }
+
+    return offset;
+}
+
 static uint32_t encode_addi(unsigned int rd, unsigned int rs1, int immediate)
 {
     const uint32_t imm = (uint32_t)immediate & 0xfffU;
@@ -835,6 +883,15 @@ int get_distance_to_code(char* measurement_template, size_t templateI) {
     while (!starts_with_magic_bytes(&measurement_template[templateI], MAGIC_BYTES_CODE)) {
         if (starts_with_magic_bytes(&measurement_template[templateI], MAGIC_BYTES_PFC_START)) {
             templateI += 8;
+        #if defined(__riscv)
+        } else if (starts_with_magic_bytes(&measurement_template[templateI], MAGIC_BYTES_RISCV_CSR_START)) {
+            // expands to one csrr + one sd per counter (see emit_riscv_counter_reads)
+            templateI += 8;
+            dist += 8 * (int)riscv_n_counters;
+        } else if (starts_with_magic_bytes(&measurement_template[templateI], MAGIC_BYTES_RISCV_LOOP_START)) {
+            // expands to nothing
+            templateI += 8;
+        #endif
         } else {
             templateI++;
             dist++;
@@ -1068,15 +1125,11 @@ bool create_runtime_code(char* measurement_template, long local_unroll_count, lo
             templateI += 8; rcI += 8;
         #if defined(__riscv)
         } else if (starts_with_magic_bytes(&measurement_template[templateI], MAGIC_BYTES_RISCV_CSR_START)) {
-            const uint32_t instruction = encode_csrr(5, riscv_pmc_csr_number);
-            memcpy(&runtime_code[rcI], &instruction, sizeof(instruction));
+            rcI = emit_riscv_counter_reads(runtime_code, rcI, 0);
             templateI += 8;
-            rcI += sizeof(instruction);
-        } else if (starts_with_magic_bytes( &measurement_template[templateI], MAGIC_BYTES_RISCV_CSR_END)) {
-            const uint32_t instruction = encode_csrr(5, riscv_pmc_csr_number);
-            memcpy(&runtime_code[rcI], &instruction, sizeof(instruction));
+        } else if (starts_with_magic_bytes(&measurement_template[templateI], MAGIC_BYTES_RISCV_CSR_END)) {
+            rcI = emit_riscv_counter_reads(runtime_code, rcI, MAX_PROGRAMMABLE_COUNTERS);
             templateI += 8;
-            rcI += sizeof(instruction);
         } else if (starts_with_magic_bytes(&measurement_template[templateI], MAGIC_BYTES_RISCV_LOOP_END)) {
             if (!riscv_loop_start_seen) {
                 print_error("RISC-V loop end found before loop start");
@@ -1274,14 +1327,21 @@ void run_experiment(char* measurement_template, int64_t* results[], int n_counte
         typedef void (*runtime_function_t)(int64_t *results, uint64_t repetitions, void *scratch_memory);
 
         const uint64_t repetitions = local_loop_count == 0 ? 1 : (uint64_t)local_loop_count;
-        ((runtime_function_t)runtime_code)(pfc_mem, repetitions, runtime_r14);
+        ((runtime_function_t)runtime_code)(riscv_counter_mem, repetitions, runtime_r14);
+
+        for (int c=0; c<n_counters; c++) {
+            // hpmcounters can be narrower than 64 bits -> mask the difference
+            const uint64_t start = (uint64_t)riscv_counter_mem[c];
+            const uint64_t end = (uint64_t)riscv_counter_mem[MAX_PROGRAMMABLE_COUNTERS + c];
+            results[c][max(0L, ri)] = (int64_t)((end - start) & riscv_counter_mask[c]);
+        }
         #else
         ((void (*)(void))runtime_code)();
-        #endif
 
         for (int c=0; c<n_counters; c++) {
             results[c][max(0L, ri)] = pfc_mem[c];
         }
+        #endif
     }
 }
 
@@ -2290,13 +2350,8 @@ void measurement_template_RISCV_PMC(void)
         ".balign 8\n"
         ".quad " STRINGIFY(MAGIC_BYTES_INIT) "\n"
 
-        "sd zero, 0(s11)\n"
-
         ".balign 8\n"
         ".quad " STRINGIFY(MAGIC_BYTES_RISCV_CSR_START) "\n"
-
-        "neg t0, t0\n"
-        "sd t0, 0(s11)\n"
 
         ".balign 8\n"
         ".quad " STRINGIFY(MAGIC_BYTES_RISCV_LOOP_START) "\n"
@@ -2309,10 +2364,6 @@ void measurement_template_RISCV_PMC(void)
 
         ".balign 8\n"
         ".quad " STRINGIFY(MAGIC_BYTES_RISCV_CSR_END) "\n"
-
-        "ld t1, 0(s11)\n"
-        "add t1, t1, t0\n"
-        "sd t1, 0(s11)\n"
 
         ".balign 8\n"
         ".quad " STRINGIFY(MAGIC_BYTES_TEMPLATE_END) "\n"
@@ -2365,104 +2416,6 @@ void initial_warm_up_template(void)
         ".quad " STRINGIFY(MAGIC_BYTES_TEMPLATE_END) "\n"
 
         "ret\n"
-
-        ".option pop\n"
-    );
-}
-
-// __attribute__((naked, noinline))
-// void measurement_FF_template_RISCV(void)
-// {
-//     __asm__ volatile(
-//         ".option push\n"
-//         ".option norvc\n"
-
-//         ".balign 8\n"
-//         ".quad " STRINGIFY(MAGIC_BYTES_INIT) "\n"
-
-//         "li t0, " STRINGIFY(MAGIC_BYTES_PFC) "\n"
-//         "sd zero, 0(t0)\n"
-//         "sd zero, 8(t0)\n"
-
-//         "rdcycle t1\n"
-//         "rdinstret t2\n"
-//         "sub zero, zero, zero\n"
-
-//         "neg t1, t1\n"
-//         "neg t2, t2\n"
-//         "sd t1, 0(t0)\n"
-//         "sd t2, 8(t0)\n"
-
-//         ".balign 8\n"
-//         ".quad " STRINGIFY(MAGIC_BYTES_CODE) "\n"
-
-//         "rdinstret t2\n"
-//         "rdcycle t1\n"
-//         "li t0, " STRINGIFY(MAGIC_BYTES_PFC) "\n"
-
-//         "ld t3, 0(t0)\n"
-//         "add t3, t3, t1\n"
-//         "sd t3, 0(t0)\n"
-
-//         "ld t3, 8(t0)\n"
-//         "add t3, t3, t2\n"
-//         "sd t3, 8(t0)\n"
-
-//         ".balign 8\n"
-//         ".quad " STRINGIFY(MAGIC_BYTES_TEMPLATE_END) "\n"
-
-//         "ret\n"
-//         ".option pop\n"
-//     );
-// }
-
-__attribute__((naked, noinline))
-void measurement_FF_template_RISCV(void)
-{
-    __asm__ volatile(
-        ".option push\n"
-        ".option norvc\n"
-
-        RISCV_TEMPLATE_PROLOGUE
-
-
-        ".balign 8\n"
-        ".quad " STRINGIFY(MAGIC_BYTES_INIT) "\n"
-
-        "sd zero, 0(s11)\n"
-        "sd zero, 8(s11)\n"
-
-        "rdcycle t0\n"
-        "rdinstret t1\n"
-        "neg t0, t0\n"
-        "neg t1, t1\n"
-        "sd t0, 0(s11)\n"
-        "sd t1, 8(s11)\n"
-
-        ".balign 8\n"
-        ".quad " STRINGIFY(MAGIC_BYTES_RISCV_LOOP_START) "\n"
-
-        ".balign 8\n"
-        ".quad " STRINGIFY(MAGIC_BYTES_CODE) "\n"
-
-        ".balign 8\n"
-        ".quad " STRINGIFY(MAGIC_BYTES_RISCV_LOOP_END) "\n"
-
-        "rdinstret t1\n"
-        "rdcycle t0\n"
-
-        "ld t2, 0(s11)\n"
-        "add t2, t2, t0\n"
-        "sd t2, 0(s11)\n"
-
-        "ld t2, 8(s11)\n"
-        "add t2, t2, t1\n"
-        "sd t2, 8(s11)\n"
-
-        ".balign 8\n"
-        ".quad " STRINGIFY(MAGIC_BYTES_TEMPLATE_END) "\n"
-
-        RISCV_TEMPLATE_EPILOGUE
 
         ".option pop\n"
     );

@@ -212,7 +212,12 @@ extern int Intel_perf_mon_ver;
 extern int Intel_FF_ctr_width;
 extern int Intel_programmable_ctr_width;
 
+#if defined(__riscv)
+// cycles + instret + up to 22 raw events can be read in one run
+#define MAX_PROGRAMMABLE_COUNTERS 24
+#else
 #define MAX_PROGRAMMABLE_COUNTERS 8
+#endif
 extern int n_programmable_counters;
 
 // Pointers to a memory regions that are writable and executable.
@@ -236,7 +241,13 @@ extern int64_t pfc_mem[MAX_PROGRAMMABLE_COUNTERS];
 extern void* RSP_mem;
 
 #if defined(__riscv)
-extern unsigned int riscv_pmc_csr_number;
+// Counters read by measurement_template_RISCV_PMC. Set them before create_runtime_code():
+// counter i is read with "csrr rX, riscv_counter_csr[i]" before and after the benchmark code.
+extern unsigned int riscv_n_counters;
+extern unsigned int riscv_counter_csr[MAX_PROGRAMMABLE_COUNTERS];
+extern uint64_t riscv_counter_mask[MAX_PROGRAMMABLE_COUNTERS];   // (1 << counter width) - 1
+// [0, MAX): values before the code, [MAX, 2*MAX): values after the code
+extern int64_t riscv_counter_mem[2*MAX_PROGRAMMABLE_COUNTERS];
 #endif
 
 extern int64_t* measurement_results[MAX_PROGRAMMABLE_COUNTERS];
@@ -353,7 +364,6 @@ uint32_t encode_csrr(unsigned int rd, unsigned int csr);
 
 void measurement_template_RISCV(void);
 void measurement_template_RISCV_noMem(void);
-void measurement_FF_template_RISCV(void);
 void measurement_template_RISCV_PMC(void);
 void one_time_init_template(void);
 void initial_warm_up_template(void);
