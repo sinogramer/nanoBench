@@ -11,6 +11,7 @@ MABI=${MABI:-lp64d}
 
 ASM=""
 ASM_INIT=""
+ASM_ONE_TIME_INIT=""
 KEEP_TEMP=0
 ARGS=()
 
@@ -22,6 +23,10 @@ while (($# > 0)); do
             ;;
         -asm_init)
             ASM_INIT=$2
+            shift 2
+            ;;
+        -asm_one_time_init)
+            ASM_ONE_TIME_INIT=$2
             shift 2
             ;;
         -march)
@@ -87,6 +92,13 @@ if [[ -n "$ASM_INIT" ]]; then
     "$CC" -c -march="$MARCH" -mabi="$MABI" -o "$TMPDIR/init.o" "$TMPDIR/init.S"
     "$OBJCOPY" -O binary -j .text "$TMPDIR/init.o" "$TMPDIR/init.bin"
     ARGS+=(-code_init "$TMPDIR/init.bin")
+fi
+
+if [[ -n "$ASM_ONE_TIME_INIT" ]]; then
+    write_asm "$TMPDIR/one_time_init.S" benchmark_one_time_init "$ASM_ONE_TIME_INIT"
+    "$CC" -c -march="$MARCH" -mabi="$MABI" -o "$TMPDIR/one_time_init.o" "$TMPDIR/one_time_init.S"
+    "$OBJCOPY" -O binary -j .text "$TMPDIR/one_time_init.o" "$TMPDIR/one_time_init.bin"
+    ARGS+=(-code_one_time_init "$TMPDIR/one_time_init.bin")
 fi
 
 "$ROOT/user/nanoBench" -code "$TMPDIR/code.bin" "${ARGS[@]}"

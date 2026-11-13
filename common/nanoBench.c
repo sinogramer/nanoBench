@@ -1266,14 +1266,15 @@ void create_and_run_one_time_init_code() {
         }
     }
     templateI += 8;
-    // do {
-    //     runtime_code[rcI++] = measurement_template[templateI++];
-    // } while (measurement_template[templateI-1] != '\xC3'); // 0xC3 = ret
+
+    // copy the rest of the template (epilogue) up to and including the return instruction
     #if defined(__x86_64__) || defined(__i386__)
 
     do {
-        runtime_code[rcI++] = measurement_template[templateI++];
-    } while (measurement_template[templateI - 1] != '\xC3');
+        runtime_one_time_init_code[rcI++] = template[templateI++];
+    } while (template[templateI - 1] != '\xC3'); // 0xC3 = ret
+
+    ((void(*)(void))runtime_one_time_init_code)();
 
     #elif defined(__riscv)
 
@@ -1283,8 +1284,7 @@ void create_and_run_one_time_init_code() {
         uint32_t instruction;
 
         memcpy(&instruction, &template[templateI], sizeof(instruction));
-
-        memcpy(&runtime_code[rcI], &template[templateI], sizeof(instruction));
+        memcpy(&runtime_one_time_init_code[rcI], &template[templateI], sizeof(instruction));
 
         templateI += sizeof(instruction);
         rcI += sizeof(instruction);
@@ -1294,7 +1294,11 @@ void create_and_run_one_time_init_code() {
         }
     }
 
-    __builtin___clear_cache(runtime_code, runtime_code + rcI);
+    __builtin___clear_cache(runtime_one_time_init_code, runtime_one_time_init_code + rcI);
+
+    // same calling convention as the measurement code: (results, loop count, scratch memory)
+    typedef void (*one_time_init_function_t)(int64_t *results, uint64_t repetitions, void *scratch_memory);
+    ((one_time_init_function_t)runtime_one_time_init_code)(riscv_counter_mem, 1, runtime_r14);
 
     #endif
 }
@@ -1309,10 +1313,10 @@ void run_initial_warmup_experiment() {
 
     for (int i=0; i<initial_warm_up_count; i++) {
         #if defined(__riscv)
-        typedef void (*runtime_function_t)(int64_t *results, uint64_t repetitions);
+        typedef void (*runtime_function_t)(int64_t *results, uint64_t repetitions, void *scratch_memory);
 
         const uint64_t repetitions = loop_count == 0 ? 1 : (uint64_t)loop_count;
-        ((runtime_function_t)runtime_code)(pfc_mem, repetitions);
+        ((runtime_function_t)runtime_code)(riscv_counter_mem, repetitions, runtime_r14);
         #else
         ((void (*)(void))runtime_code)();
         #endif
@@ -2345,13 +2349,15 @@ void one_time_init_template(void)
         ".option push\n"
         ".option norvc\n"
 
+        RISCV_TEMPLATE_PROLOGUE
+
         ".balign 8\n"
         ".quad " STRINGIFY(MAGIC_BYTES_INIT) "\n"
 
         ".balign 8\n"
         ".quad " STRINGIFY(MAGIC_BYTES_TEMPLATE_END) "\n"
 
-        "ret\n"
+        RISCV_TEMPLATE_EPILOGUE
 
         ".option pop\n"
     );
@@ -2363,6 +2369,8 @@ void initial_warm_up_template(void)
     __asm__ volatile(
         ".option push\n"
         ".option norvc\n"
+
+        RISCV_TEMPLATE_PROLOGUE
 
         ".balign 8\n"
         ".quad " STRINGIFY(MAGIC_BYTES_INIT) "\n"
@@ -2379,7 +2387,7 @@ void initial_warm_up_template(void)
         ".balign 8\n"
         ".quad " STRINGIFY(MAGIC_BYTES_TEMPLATE_END) "\n"
 
-        "ret\n"
+        RISCV_TEMPLATE_EPILOGUE
 
         ".option pop\n"
     );
